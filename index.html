@@ -961,16 +961,28 @@ document.getElementById('dash-date').textContent=new Date().toLocaleDateString('
 // Fetch Supabase credentials from server then initialize
 async function init() {
   try {
+    console.log('Fetching config from /api/config...')
     const r = await fetch('/api/config')
+    console.log('Config response status:', r.status)
     const cfg = await r.json()
+    console.log('Config received:', cfg.supabaseUrl ? 'URL ok' : 'URL MISSING', cfg.supabaseKey ? 'KEY ok' : 'KEY MISSING')
     if(cfg.supabaseUrl && cfg.supabaseKey) {
-      window.__SB_URL__ = cfg.supabaseUrl
-      window.__SB_KEY__ = cfg.supabaseKey
-      // Reinitialize Supabase with real credentials  
       sb = supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey)
+      console.log('Supabase client recreated with real credentials')
+    } else {
+      console.error('Missing credentials! URL:', cfg.supabaseUrl, 'Key length:', cfg.supabaseKey?.length)
+      setDbStatus(false, 'Missing credentials')
+      document.getElementById('dbdot').className = 'tdb red'
+      toast('Missing Supabase credentials. Check Vercel environment variables.', false)
+      loading(false)
+      return
     }
   } catch(e) {
-    console.warn('Could not fetch config, using window vars', e)
+    console.error('Config fetch failed:', e)
+    setDbStatus(false, 'Config error')
+    toast('Cannot load config: ' + e.message, false)
+    loading(false)
+    return
   }
   loadAll()
 }
