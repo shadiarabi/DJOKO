@@ -77,7 +77,7 @@ window.openModal = function(id) {
   if(id==='mo-supplier') bcs('su-cur')
   if(id==='mo-stock') el('sk-code').value='PRD-'+(products.length+1).toString().padStart(3,'0')
   if(id==='mo-invoice'){
-    bcs('inv-cur','BRL');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30)
+    bcs('inv-cur','BRL');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30);if(el('inv-taxa'))el('inv-taxa').value='5.50'
     el('inv-num').value=(settings.invoice_prefix||'INV-')+(invoices.length+1).toString().padStart(3,'0')
     el('inv-disc').value=0; el('inv-status').value='pending'; el('inv-notes').value=''
     pSel('inv-cust',customers,'name','<option value="">Select customer...</option>')
@@ -251,9 +251,10 @@ window.calcInv = function() {
   if(el('inv-disc-amt')) el('inv-disc-amt').textContent = discAmt>0 ? '- '+fc(discAmt,cur) : ''
   if(el('inv-total')) el('inv-total').textContent = fc(total, cur)
 
-  // USD equivalent using taxa (exchange rate R$ -> $)
-  const taxa = parseFloat(el('inv-taxa')?.value) || 0.18
-  const totalUSD = total * taxa
+  // USD equivalent: taxa = how many R$ per 1 USD (e.g. 5.50)
+  // so USD = BRL total / taxa
+  const taxa = parseFloat(el('inv-taxa')?.value) || 5.50
+  const totalUSD = taxa > 0 ? total / taxa : 0
   if(el('inv-total-usd')) {
     el('inv-total-usd').textContent = '$' + totalUSD.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
   }
@@ -417,7 +418,7 @@ window.saveInvoice = async function() {
   const total=sub*(1-discPct/100)
   const taxa = parseFloat(el('inv-taxa')?.value) || 0.18
   // If currency is BRL, convert to USD using taxa; otherwise use standard rates
-  const baseAmt = cur === 'BRL' ? total * taxa : toBase(total, cur)
+  const baseAmt = cur === 'BRL' ? (taxa > 0 ? total / taxa : total) : toBase(total, cur)
   const cogs=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(l.prod.cost_price||0)),0)
   const status=el('inv-status').value
   const paid=status==='paid'?baseAmt:status==='partial'?baseAmt*0.5:0
@@ -430,7 +431,7 @@ window.saveInvoice = async function() {
     const oldInv=invoices.find(i=>i.id===editId)
     const oldStatus=el('mo-invoice').dataset.editOldStatus
     const oldBaseAmt=parseFloat(el('mo-invoice').dataset.editBaseAmt)||0
-    const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:parseFloat(el('inv-taxa')?.value)||0.18}
+    const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:parseFloat(el('inv-taxa')?.value)||5.50}
     const {error}=await sb.from('invoices').update(invData).eq('id',editId)
     if(error){btn.disabled=false;btn.textContent='Update invoice';return toast('Error: '+error.message,false)}
     // Replace lines
@@ -456,7 +457,7 @@ window.saveInvoice = async function() {
     closeModal('mo-invoice'); saved(); toast('Invoice updated!'); updateBadges()
   } else {
     // ── CREATE NEW INVOICE ──
-    const {data:inv,error}=await sb.from('invoices').insert({number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:parseFloat(el('inv-taxa')?.value)||0.18}).select().single()
+    const {data:inv,error}=await sb.from('invoices').insert({number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:parseFloat(el('inv-taxa')?.value)||5.50}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
     await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
     for(const l of valid){await sb.from('products').update({qty:Math.max(0,(l.prod.qty||0)-l.qty)}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p)p.qty=Math.max(0,p.qty-l.qty)}
@@ -487,7 +488,7 @@ window.editInvoice = async function(id) {
   // Fill in header fields
   bcs('inv-cur', inv.currency||'BRL')
   // Set default taxa
-  if(el('inv-taxa')) el('inv-taxa').value = inv.taxa || 0.18
+  if(el('inv-taxa')) el('inv-taxa').value = inv.taxa || 5.50
   el('inv-date').value = inv.date || ''
   el('inv-due').value = inv.due_date || ''
   el('inv-num').value = inv.number || ''
