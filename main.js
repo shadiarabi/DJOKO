@@ -98,109 +98,153 @@ window.changeCurrency = function() { baseCur=el('base-currency').value; renderAl
 // ── INVOICE LINES ─────────────────────────────────────────
 window.addInvLine = function() { invLines.push({prod:null,qty:1,price:0,disc:0}); renderInvLines() }
 window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPoLines() }
-
+// ── RENDER INVOICE LINES ──────────────────────────────────
 function renderInvLines() {
-  const cur = el('inv-cur')?.value||baseCur
-  const header = `<div style="display:grid;grid-template-columns:2fr 60px 80px 55px 28px;gap:5px;margin-bottom:4px;padding:0 2px">
-    <span style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Product</span>
-    <span style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Qty</span>
-    <span style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Price</span>
-    <span style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Disc%</span>
-    <span></span>
-  </div>`
-  const rows = invLines.map((l,i) => {
-    const lineTotal = l.qty * l.price * (1 - (l.disc||0)/100)
-    return `<div style="display:grid;grid-template-columns:2fr 60px 80px 55px 28px;gap:5px;margin-bottom:6px;align-items:center">
-      <select onchange="ilProd(${i},this.value)" style="padding:6px 7px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;background:var(--inp)">
-        <option value="">Select product...</option>
-        ${products.map(p=>`<option value="${p.id}"${l.prod?.id===p.id?'selected':''}>${p.name}</option>`).join('')}
-      </select>
-      <input type="number" value="${l.qty}" min="1" step="1"
-        oninput="updateInvLine(${i},'qty',this.value)"
-        onchange="updateInvLine(${i},'qty',this.value)"
-        style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:center">
-      <input type="number" value="${l.price}" min="0" step="0.01"
-        oninput="updateInvLine(${i},'price',this.value)"
-        onchange="updateInvLine(${i},'price',this.value)"
-        style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:right">
-      <input type="number" value="${l.disc||0}" min="0" max="100" step="1"
-        oninput="updateInvLine(${i},'disc',this.value)"
-        onchange="updateInvLine(${i},'disc',this.value)"
-        style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:center">
-      <button class="btn icon ghost" onclick="invLines.splice(${i},1);renderInvLines();calcInv()" title="Remove line">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div style="text-align:right;font-size:10px;color:var(--tx2);margin:-4px 32px 6px 0">
-      Line total: <strong id="inv-line-total-${i}" style="color:var(--txt)">${fc(lineTotal, cur)}</strong>
-    </div>`
-  }).join('')
-  el('inv-lines').innerHTML = header + rows
+  const cur = el('inv-cur')?.value || baseCur
+  let html = '<table style="width:100%;border-collapse:collapse;margin-bottom:8px"><thead><tr style="background:#F9FAFB">'
+  html += '<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr)">PRODUCT</th>'
+  html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:65px">QTY</th>'
+  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">PRICE</th>'
+  html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:55px">DISC%</th>'
+  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">TOTAL</th>'
+  html += '<th style="border-bottom:1px solid var(--bdr);width:26px"></th>'
+  html += '</tr></thead><tbody>'
+  invLines.forEach((l,i) => {
+    const qty=parseFloat(l.qty)||0, price=parseFloat(l.price)||0, disc=parseFloat(l.disc)||0
+    const lt = qty*price*(1-disc/100)
+    html += '<tr>'
+    html += '<td style="padding:4px 4px 4px 0"><select id="inv-prod-'+i+'" onchange="ilProd('+i+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;background:var(--inp)">'
+    html += '<option value="">Select product...</option>'
+    products.forEach(p => { html += '<option value="'+p.id+'"'+(l.prod&&l.prod.id===p.id?' selected':'')+'>'+p.name+'</option>' })
+    html += '</select></td>'
+    html += '<td style="padding:4px"><input id="inv-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="invLines['+i+'].qty=parseFloat(this.value)||0;refreshInvLine('+i+')" onchange="invLines['+i+'].qty=parseFloat(this.value)||0;refreshInvLine('+i+')" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="inv-price-'+i+'" type="number" value="'+(l.price||0)+'" min="0" step="0.01" oninput="invLines['+i+'].price=parseFloat(this.value)||0;refreshInvLine('+i+')" onchange="invLines['+i+'].price=parseFloat(this.value)||0;refreshInvLine('+i+')" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="inv-disc-line-'+i+'" type="number" value="'+(l.disc||0)+'" min="0" max="100" step="1" oninput="invLines['+i+'].disc=parseFloat(this.value)||0;refreshInvLine('+i+')" onchange="invLines['+i+'].disc=parseFloat(this.value)||0;refreshInvLine('+i+')" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
+    html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="inv-lt-'+i+'">'+fc(lt,cur)+'</td>'
+    html += '<td style="padding:4px 0"><button onclick="invLines.splice('+i+',1);renderInvLines()" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px" title="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
+    html += '</tr>'
+  })
+  html += '</tbody></table>'
+  el('inv-lines').innerHTML = html
   calcInv()
 }
-function renderPoLines() {
-  el('po-lines').innerHTML = poLines.map((l,i) => `
-    <div style="display:grid;grid-template-columns:2fr 60px 90px 28px;gap:5px;margin-bottom:7px;align-items:center">
-      <select onchange="plProd(${i},this.value)" style="padding:6px 7px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px">
-        <option value="">Select product...</option>
-        ${products.map(p=>`<option value="${p.id}"${l.prod?.id===p.id?'selected':''}>${p.name}</option>`).join('')}
-      </select>
-      <input type="number" value="${l.qty}" min="1" onchange="poLines[${i}].qty=parseFloat(this.value)||1;calcPo()" style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%">
-      <input type="number" value="${l.cost}" min="0" onchange="poLines[${i}].cost=parseFloat(this.value)||0;calcPo()" style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%">
-      <button class="btn icon ghost" onclick="poLines.splice(${i},1);renderPoLines()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-    </div>`).join('')
-  calcPo()
-}
-window.ilProd = function(i,id) {
-  const p=products.find(x=>x.id===id)
-  invLines[i].prod=p||null
-  if(p) invLines[i].price=p.sell_price||0
-  renderInvLines()
-}
-window.updateInvLine = function(i, field, val) {
-  const num = parseFloat(val)
-  invLines[i][field] = isNaN(num) ? 0 : num
-  if(field === 'qty' && invLines[i].qty < 1) invLines[i].qty = 1
-  // Update line total display without re-rendering inputs
-  const cur = document.getElementById('inv-cur')?.value || baseCur
+
+window.refreshInvLine = function(i) {
+  const cur = el('inv-cur')?.value || baseCur
   const l = invLines[i]
-  const lineTotal = (parseFloat(l.qty)||0) * (parseFloat(l.price)||0) * (1 - (parseFloat(l.disc)||0)/100)
-  const lineTotalEl = document.getElementById('inv-line-total-'+i)
-  if(lineTotalEl) lineTotalEl.textContent = fc(lineTotal, cur)
+  const qty=parseFloat(l.qty)||0, price=parseFloat(l.price)||0, disc=parseFloat(l.disc)||0
+  const lt = qty*price*(1-disc/100)
+  const e=el('inv-lt-'+i); if(e) e.textContent=fc(lt,cur)
   calcInv()
 }
-window.updatePoLine = function(i, field, val) {
-  const num = parseFloat(val)
-  poLines[i][field] = isNaN(num) ? 0 : num
-  if(field === 'qty' && poLines[i].qty < 1) poLines[i].qty = 1
-  // Update line total display without re-rendering inputs
-  const cur = document.getElementById('po-cur')?.value || baseCur
-  const l = poLines[i]
-  const lineTotal = (parseFloat(l.qty)||0) * (parseFloat(l.cost)||0)
-  const lineTotalEl = document.getElementById('po-line-total-'+i)
-  if(lineTotalEl) lineTotalEl.textContent = fc(lineTotal, cur)
+
+function renderPoLines() {
+  const cur = el('po-cur')?.value || baseCur
+  let html = '<table style="width:100%;border-collapse:collapse;margin-bottom:8px"><thead><tr style="background:#F9FAFB">'
+  html += '<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr)">PRODUCT</th>'
+  html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:65px">QTY</th>'
+  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:100px">UNIT COST</th>'
+  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:100px">LINE TOTAL</th>'
+  html += '<th style="border-bottom:1px solid var(--bdr);width:26px"></th></tr></thead><tbody>'
+  poLines.forEach((l,i) => {
+    const qty=parseFloat(l.qty)||0, cost=parseFloat(l.cost)||0, lt=qty*cost
+    html += '<tr>'
+    html += '<td style="padding:4px 4px 4px 0"><select id="po-prod-'+i+'" onchange="plProd('+i+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;background:var(--inp)"><option value="">Select product...</option>'
+    products.forEach(p => { html += '<option value="'+p.id+'"'+(l.prod&&l.prod.id===p.id?' selected':'')+'>'+p.name+'</option>' })
+    html += '</select></td>'
+    html += '<td style="padding:4px"><input id="po-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="poLines['+i+'].qty=parseFloat(this.value)||0;refreshPoLine('+i+')" onchange="poLines['+i+'].qty=parseFloat(this.value)||0;refreshPoLine('+i+')" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="po-cost-'+i+'" type="number" value="'+(l.cost||0)+'" min="0" step="0.01" oninput="poLines['+i+'].cost=parseFloat(this.value)||0;refreshPoLine('+i+')" onchange="poLines['+i+'].cost=parseFloat(this.value)||0;refreshPoLine('+i+')" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
+    html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="po-lt-'+i+'">'+fc(lt,cur)+'</td>'
+    html += '<td style="padding:4px 0"><button onclick="poLines.splice('+i+',1);renderPoLines()" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
+    html += '</tr>'
+  })
+  html += '</tbody></table>'
+  el('po-lines').innerHTML = html
   calcPo()
 }
-window.plProd = function(i,id) { const p=products.find(x=>x.id===id); poLines[i].prod=p||null; if(p)poLines[i].cost=p.cost_price||0; renderPoLines() }
+
+window.refreshPoLine = function(i) {
+  const cur = el('po-cur')?.value || baseCur
+  const l = poLines[i]
+  const qty=parseFloat(l.qty)||0, cost=parseFloat(l.cost)||0, lt=qty*cost
+  const e=el('po-lt-'+i); if(e) e.textContent=fc(lt,cur)
+  calcPo()
+}
+
+
+
+window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPoLines() }
+
+// ── INVOICE LINE PRODUCT SELECTED ─────────────────────────
+window.ilProd = function(i, pid) {
+  const p = products.find(x => x.id === pid)
+  invLines[i].prod = p || null
+  if(p) {
+    invLines[i].price = parseFloat(p.sell_price) || 0
+    const inp = el('inv-price-'+i)
+    if(inp) inp.value = p.sell_price || 0
+    refreshInvLine(i)
+  }
+}
+
+// ── PO LINE PRODUCT SELECTED ──────────────────────────────
+window.plProd = function(i, pid) {
+  const p = products.find(x => x.id === pid)
+  poLines[i].prod = p || null
+  if(p) {
+    poLines[i].cost = parseFloat(p.cost_price) || 0
+    const inp = el('po-cost-'+i)
+    if(inp) inp.value = p.cost_price || 0
+    refreshPoLine(i)
+  }
+}
+
+// ── UPDATE INV LINE FIELD ─────────────────────────────────
+window.updateInvLine = function(i, field, val) {
+  invLines[i][field] = parseFloat(val) || 0
+  // Update just the line total span and grand total — no re-render
+  const cur = el('inv-cur')?.value || baseCur
+  const l = invLines[i]
+  const lt = (l.qty||0) * (l.price||0) * (1 - (l.disc||0)/100)
+  const span = document.getElementById('ilt'+i)
+  if(span) span.textContent = fc(lt, cur)
+  calcInv()
+}
+
+// ── UPDATE PO LINE FIELD ──────────────────────────────────
+window.updatePoLine = function(i, field, val) {
+  poLines[i][field] = parseFloat(val) || 0
+  const cur = el('po-cur')?.value || baseCur
+  const l = poLines[i]
+  const lt = (l.qty||0) * (l.cost||0)
+  const span = document.getElementById('plt'+i)
+  if(span) span.textContent = fc(lt, cur)
+  calcPo()
+}
+
+// ── RENDER INVOICE LINES ──────────────────────────────────
+
+
 window.calcInv = function() {
   const cur = el('inv-cur')?.value || baseCur
-  // Sum each line: qty * price * (1 - line_disc/100)
-  const sub = invLines.reduce((a,l) => {
-    const qty = parseFloat(l.qty) || 0
-    const price = parseFloat(l.price) || 0
-    const disc = parseFloat(l.disc) || 0
-    return a + qty * price * (1 - disc/100)
-  }, 0)
+  let sub = 0
+  invLines.forEach(l => {
+    sub += (parseFloat(l.qty)||0) * (parseFloat(l.price)||0) * (1-(parseFloat(l.disc)||0)/100)
+  })
   const discPct = parseFloat(el('inv-disc')?.value) || 0
   const discAmt = sub * discPct / 100
   const total = sub - discAmt
   if(el('inv-sub')) el('inv-sub').textContent = fc(sub, cur)
-  if(el('inv-disc-amt')) el('inv-disc-amt').textContent = discAmt > 0 ? '- '+fc(discAmt, cur) : ''
+  if(el('inv-disc-amt')) el('inv-disc-amt').textContent = discAmt>0 ? '- '+fc(discAmt,cur) : ''
   if(el('inv-total')) el('inv-total').textContent = fc(total, cur)
 }
+
+// ── CALC PO TOTAL ─────────────────────────────────────────
 window.calcPo = function() {
-  const cur=el('po-cur')?.value||baseCur
-  el('po-total').textContent=fc(poLines.reduce((a,l)=>a+l.qty*l.cost,0),cur)
+  const cur = el('po-cur')?.value || baseCur
+  let total = 0
+  poLines.forEach(l => { total += (parseFloat(l.qty)||0) * (parseFloat(l.cost)||0) })
+  if(el('po-total')) el('po-total').textContent = fc(total, cur)
 }
 
 // ── SETTINGS ──────────────────────────────────────────────
