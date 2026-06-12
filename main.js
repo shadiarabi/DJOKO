@@ -78,7 +78,9 @@ window.openModal = function(id) {
   if(id==='mo-stock') el('sk-code').value='PRD-'+(products.length+1).toString().padStart(3,'0')
   if(id==='mo-invoice'){
     bcs('inv-cur','BRL');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30);if(el('inv-taxa'))el('inv-taxa').value='5.50'
-    el('inv-num').value=(settings.invoice_prefix||'INV-')+(invoices.length+1).toString().padStart(3,'0')
+    // Generate unique invoice number using count + timestamp suffix
+    const invCount = (invoices.length+1).toString().padStart(3,'0')
+    el('inv-num').value=(settings.invoice_prefix||'INV-')+invCount
     el('inv-disc').value=0; el('inv-status').value='pending'; el('inv-notes').value=''
     pSel('inv-cust',customers,'name','<option value="">Select customer...</option>')
     invLines=[];addInvLine();renderInvLines()
@@ -431,7 +433,7 @@ window.saveInvoice = async function() {
     const oldInv=invoices.find(i=>i.id===editId)
     const oldStatus=el('mo-invoice').dataset.editOldStatus
     const oldBaseAmt=parseFloat(el('mo-invoice').dataset.editBaseAmt)||0
-    const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:parseFloat(el('inv-taxa')?.value)||5.50}
+    const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}
     const {error}=await sb.from('invoices').update(invData).eq('id',editId)
     if(error){btn.disabled=false;btn.textContent='Update invoice';return toast('Error: '+error.message,false)}
     // Replace lines
@@ -457,7 +459,14 @@ window.saveInvoice = async function() {
     closeModal('mo-invoice'); saved(); toast('Invoice updated!'); updateBadges()
   } else {
     // ── CREATE NEW INVOICE ──
-    const {data:inv,error}=await sb.from('invoices').insert({number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:parseFloat(el('inv-taxa')?.value)||5.50}).select().single()
+    // Make sure number is unique - append timestamp if needed
+    let invNumber = el('inv-num').value
+    const existing = invoices.find(i => i.number === invNumber)
+    if(existing) {
+      invNumber = (settings.invoice_prefix||'INV-') + Date.now().toString().slice(-6)
+      el('inv-num').value = invNumber
+    }
+    const {data:inv,error}=await sb.from('invoices').insert({number:invNumber,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
     await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
     for(const l of valid){await sb.from('products').update({qty:Math.max(0,(l.prod.qty||0)-l.qty)}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p)p.qty=Math.max(0,p.qty-l.qty)}
@@ -550,7 +559,14 @@ window.savePurchase = async function() {
   const paid=status==='paid'?baseAmt:0
   const supp=suppliers.find(s=>s.id===sid)
   const btn=el('po-save-btn'); btn.disabled=true; btn.textContent='Saving...'
-  const {data:po,error}=await sb.from('purchases').insert({number:el('po-num').value,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}).select().single()
+  // Make sure PO number is unique
+  let poNumber = el('po-num').value
+  const existingPo = purchases.find(p => p.number === poNumber)
+  if(existingPo) {
+    poNumber = (settings.po_prefix||'PO-') + Date.now().toString().slice(-6)
+    el('po-num').value = poNumber
+  }
+  const {data:po,error}=await sb.from('purchases').insert({number:poNumber,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}).select().single()
   if(error){btn.disabled=false;btn.textContent='Save PO';return toast('Error: '+error.message,false)}
   await sb.from('purchase_lines').insert(poLines.map(l=>({purchase_id:po.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_cost:l.cost,line_total:l.qty*l.cost})))
   for(const l of valid){await sb.from('products').update({qty:(l.prod.qty||0)+l.qty,cost_price:l.cost}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p){p.qty+=l.qty;p.cost_price=l.cost}}
