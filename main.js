@@ -472,7 +472,7 @@ function renderReports() {
   const recv=customers.reduce((a,c)=>a+(c.balance||0),0)
   const pay=suppliers.reduce((a,s)=>a+(s.owed||0),0)
   const stk=products.reduce((a,p)=>a+p.qty*p.cost_price,0)
-  const cash=receipts.reduce((a,r)=>a+r.base_amount,0)-payments.reduce((a,p)=>a+p.base_amount,0)+500
+  const cash=receipts.reduce((a,r)=>a+r.base_amount,0)-payments.reduce((a,p)=>a+p.base_amount,0)
   const ta=stk+recv+Math.max(0,cash); const eq=ta-pay
   const rr=(lbl,val,lvl,cls)=>`<tr style="${lvl===0?'background:#F9FAFB;font-weight:700':''}"><td style="padding:8px 14px;padding-left:${14+lvl*18}px">${lbl}</td><td style="text-align:right;padding:8px 14px;color:${cls||'var(--txt)'}">${val===null?'':fmt(val)}</td></tr>`
   el('rpt-bs').innerHTML=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
