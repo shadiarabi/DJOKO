@@ -355,12 +355,13 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
 <!-- INVOICE -->
 <div class="ov" id="mo-invoice"><div class="modal" style="width:580px"><div class="mh"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>New Sales Invoice</h3><button class="btn icon ghost" onclick="closeModal('mo-invoice')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
 <div class="mb">
-  <div class="fr"><div class="fg"><label>Invoice #</label><input id="inv-num" placeholder="INV-001"></div><div class="fg"><label>Currency</label><select id="inv-cur"></select></div></div>
+  <div class="fr"><div class="fg"><label>Invoice #</label><input id="inv-num" placeholder="INV-001"></div><div class="fg"><label>Invoice currency</label><select id="inv-cur"></select><div style="font-size:10px;color:var(--tx2);margin-top:3px">Prices entered in this currency</div></div></div>
   <div class="fr"><div class="fg"><label>Invoice date *</label><input id="inv-date" type="date"></div><div class="fg"><label>Due date</label><input id="inv-due" type="date"></div></div>
   <div class="fg"><label>Customer *</label><select id="inv-cust"><option value="">Select customer…</option></select></div>
   <div class="fsec">Line items</div>
   <div id="inv-lines"></div>
   <button class="btn" onclick="addInvLine()" style="width:100%;justify-content:center;margin-bottom:10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add line</button>
+  <!-- DUAL CURRENCY TOTALS -->
   <div style="background:#F9FAFB;border:1px solid var(--bdr);border-radius:6px;padding:12px">
     <div style="display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px">
       <span style="color:var(--tx2)">Subtotal (before discount):</span>
@@ -374,8 +375,26 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
       </span>
     </div>
     <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;padding-top:9px;border-top:2px solid var(--bdr);margin-top:2px">
-      <span>TOTAL:</span>
+      <span>TOTAL (BRL R$):</span>
       <span id="inv-total" style="color:var(--acc);font-size:16px">—</span>
+    </div>
+    <!-- BRL to USD conversion -->
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:6px;padding:10px;margin-top:10px">
+      <div style="font-size:10px;font-weight:700;color:#1D4ED8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🔄 BRL → USD Conversion</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:12px">
+        <span style="color:var(--tx2)">Exchange rate:</span>
+        <span style="display:flex;align-items:center;gap:5px">
+          <span style="font-size:11px;color:var(--tx2)">R$ 1 = $</span>
+          <input id="inv-taxa" type="number" placeholder="0.18" min="0.001" step="0.001" value="0.18"
+            oninput="calcInv()"
+            style="width:70px;padding:4px 7px;border:1px solid #93C5FD;border-radius:4px;font-size:12px;text-align:center;background:#fff;font-weight:600;color:#1D4ED8">
+          <span style="font-size:11px;color:var(--tx2)">USD</span>
+        </span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;padding-top:8px;border-top:1px solid #BFDBFE">
+        <span style="color:#1D4ED8">TOTAL (USD $):</span>
+        <span id="inv-total-usd" style="color:#1D4ED8;font-size:16px">—</span>
+      </div>
     </div>
   </div>
   <div class="fg" style="margin-top:10px"><label>Status</label><select id="inv-status"><option value="pending">Pending</option><option value="partial">Partial</option><option value="paid">Paid</option></select></div>
