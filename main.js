@@ -569,24 +569,6 @@ window.delPurchase = async function(id) {
   if(s){s.totalPurchased-=po.base_amount;if(po.status==='paid')s.totalPaid-=po.paid_amount;else s.owed-=po.balance}
   renderPurchases(); renderSuppliers(); renderDash(); toast('Deleted'); updateBadges()
 }
-window.editPurchaseStatus = async function(id) {
-  const po=purchases.find(p=>p.id===id); if(!po)return
-  const newStatus=prompt('Change status:\npending / partial / paid', po.status)
-  if(!newStatus||!['pending','partial','paid'].includes(newStatus))return
-  const oldStatus=po.status
-  const supp=suppliers.find(s=>s.id===po.supplier_id)
-  const paid=newStatus==='paid'?po.base_amount:newStatus==='partial'?po.base_amount*0.5:0
-  const balance=po.base_amount-paid
-  await sb.from('purchases').update({status:newStatus,paid_amount:paid,balance}).eq('id',id)
-  po.status=newStatus; po.paid_amount=paid; po.balance=balance
-  if(supp){
-    if(oldStatus!=='paid'&&newStatus==='paid'){supp.totalPaid=(supp.totalPaid||0)+po.base_amount;supp.owed=Math.max(0,(supp.owed||0)-po.base_amount)}
-    else if(oldStatus==='paid'&&newStatus!=='paid'){supp.totalPaid=Math.max(0,(supp.totalPaid||0)-po.base_amount);supp.owed=(supp.owed||0)+po.base_amount}
-  }
-  renderPurchases(); renderSuppliers(); renderDash(); saved(); toast('PO status updated to: '+newStatus); updateBadges()
-}
-
-// ── RECEIPTS ──────────────────────────────────────────────
 window.loadCustInv = function() {
   const cid=el('rc-cust').value; const s=el('rc-inv')
   s.innerHTML='<option value="">General</option>'
@@ -708,8 +690,9 @@ function renderSuppliers() {
 }
 function renderStock() {
   const tb=el('stock-tb')
-  if(!products.length){tb.innerHTML=erow(10,'No products yet');return}
-  tb.innerHTML=products.map(p=>{
+  if(!products.length){tb.innerHTML=erow(11,'No products yet');return}
+  // Build product rows
+  const rows = products.map(p=>{
     const m=p.sell_price>0?Math.round((p.sell_price-p.cost_price)/p.sell_price*100):0
     return `<tr>
       <td><code style="background:#F3F4F6;padding:2px 5px;border-radius:3px;font-size:10px">${p.code}</code></td>
@@ -719,7 +702,25 @@ function renderStock() {
       <td>${fmt(p.cost_price)}</td><td>${fmt(p.sell_price)}</td>
       <td style="font-weight:700">${fmt(p.qty*p.cost_price)}</td>
       <td style="color:${m>=30?'var(--grn)':m>=10?'var(--org)':'var(--red)'};font-weight:700">${m}%</td>
-      <td>${skb(p.qty,p.reorder_level)}</td><td style="white-space:nowrap">${editBtn(`editStock('${p.id}')`)} ${delBtn(`delStock('${p.id}')`)}</td></tr>`}).join('')
+      <td>${skb(p.qty,p.reorder_level)}</td>
+      <td style="white-space:nowrap">${editBtn(`editStock('${p.id}')`)} ${delBtn(`delStock('${p.id}')`)}</td>
+    </tr>`
+  }).join('')
+  // Totals row
+  const totalQty = products.reduce((a,p)=>a+p.qty,0)
+  const totalCostVal = products.reduce((a,p)=>a+(p.qty*p.cost_price),0)
+  const totalRetailVal = products.reduce((a,p)=>a+(p.qty*p.sell_price),0)
+  const totalsRow = `<tr style="background:#F0FDF4;font-weight:700;border-top:2px solid var(--grn)">
+    <td colspan="3" style="padding:9px 11px;color:var(--grn)">TOTAL STOCK</td>
+    <td style="padding:9px 11px;color:var(--grn);font-size:13px">${totalQty} units</td>
+    <td></td>
+    <td></td>
+    <td></td>
+    <td style="padding:9px 11px;color:var(--grn);font-size:13px">${fmt(totalCostVal)}</td>
+    <td style="padding:9px 11px;color:var(--grn);font-size:11px">retail: ${fmt(totalRetailVal)}</td>
+    <td colspan="2"></td>
+  </tr>`
+  tb.innerHTML = rows + totalsRow
 }
 function renderStockStats() {
   el('sk-n').textContent=products.length
@@ -1021,3 +1022,58 @@ async function loadAll() {
 
 el('dash-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})
 loadAll()
+window.editPurchase = async function(id) {
+  const po = purchases.find(p=>p.id===id)
+  if(!po) return toast('Purchase order not found', false)
+
+  // Load line items from DB
+  const {data:lines, error} = await sb.from('purchase_lines').select('*').eq('purchase_id', id)
+  if(error) return toast('Error loading PO: '+error.message, false)
+
+  // Fill header fields
+  bcs('po-cur', po.currency)
+  el('po-date').value = po.date || ''
+  el('po-del').value = po.delivery_date || ''
+  el('po-num').value = po.number || ''
+  el('po-status').value = po.status || 'pending'
+
+  // Set supplier
+  pSel('po-sup', suppliers, 'name', '<option value="">Select supplier...</option>')
+  el('po-sup').value = po.supplier_id || ''
+
+  // Rebuild line items
+  poLines = (lines||[]).map(l => {
+    const prod = products.find(p => p.id === l.product_id) || {
+      id: l.product_id,
+      name: l.product_name || 'Unknown',
+      code: l.product_code || '',
+      cost_price: parseFloat(l.unit_cost) || 0,
+      sell_price: 0,
+      qty: 0
+    }
+    return {
+      prod,
+      qty: parseFloat(l.qty) || 1,
+      cost: parseFloat(l.unit_cost) || 0
+    }
+  })
+
+  if(!poLines.length) poLines = [{prod:null, qty:1, cost:0}]
+
+  // Render and calculate
+  renderPoLines()
+  calcPo()
+
+  // Set edit mode
+  el('mo-purchase').dataset.editId = id
+  el('mo-purchase').dataset.editOldStatus = po.status
+  el('mo-purchase').dataset.editBaseAmt = po.base_amount
+
+  // Update modal UI
+  el('po-save-btn').textContent = 'Update PO'
+  const h3 = el('mo-purchase').querySelector('.mh h3')
+  if(h3) h3.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--org)"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit PO — '+po.number
+
+  el('mo-purchase').classList.add('open')
+}
+
