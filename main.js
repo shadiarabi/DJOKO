@@ -657,7 +657,7 @@ function renderPurchases() {
     <td style="color:var(--grn)">${fmt(po.paid_amount||0)}</td>
     <td style="color:${(po.balance||0)>0?'var(--red)':'var(--grn)'};font-weight:700">${fmt(po.balance||0)}</td>
     <td>${sbadge(po.status)}</td>
-    <td style="white-space:nowrap"><button class="btn icon ghost" onclick="editPurchaseStatus('${po.id}')" title="Edit status" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button> ${delBtn(`delPurchase('${po.id}')`)}</td></tr>`).join('')
+    <td style="white-space:nowrap"><button class="btn icon ghost" onclick="editPurchase('${po.id}')" title="Edit status" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button> ${delBtn(`delPurchase('${po.id}')`)}</td></tr>`).join('')
 }
 function renderReceipts() {
   const tb=el('rcpt-tb')
