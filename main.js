@@ -104,7 +104,7 @@ window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPo
 // ── RENDER INVOICE LINES ──────────────────────────────────
 function renderInvLines() {
   const cur = el('inv-cur')?.value || baseCur
-  let html = '<table style="width:100%;border-collapse:collapse;margin-bottom:8px"><thead><tr style="background:#F9FAFB">'
+  let html = '<table style="width:100%;border-collapse:collapse;margin-bottom:4px"><thead><tr style="background:#F9FAFB">'
   html += '<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr)">PRODUCT</th>'
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:65px">QTY</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">PRICE</th>'
@@ -115,18 +115,38 @@ function renderInvLines() {
   invLines.forEach((l,i) => {
     const qty=parseFloat(l.qty)||0, price=parseFloat(l.price)||0, disc=parseFloat(l.disc)||0
     const lt = qty*price*(1-disc/100)
+    const stockQty = l.prod ? (l.prod.qty||0) : null
+    const stockColor = stockQty===null?'':stockQty<=0?'color:#DC2626':stockQty<5?'color:#D97706':'color:#16A34A'
+    const stockLabel = stockQty===null?'':`<span style="font-size:9px;${stockColor};margin-left:4px">(stock: ${stockQty})</span>`
     html += '<tr>'
-    html += '<td style="padding:4px 4px 4px 0"><select id="inv-prod-'+i+'" onchange="ilProd('+i+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;background:var(--inp)">'
+    html += '<td style="padding:4px 4px 4px 0">'
+    html += '<select id="inv-prod-'+i+'" onchange="ilProd('+i+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;background:var(--inp)">'
     html += '<option value="">Select product...</option>'
-    products.forEach(p => { html += '<option value="'+p.id+'"'+(l.prod&&l.prod.id===p.id?' selected':'')+'>'+p.name+'</option>' })
-    html += '</select></td>'
+    products.forEach(p => {
+      const avail = p.qty||0
+      const color = avail<=0?'color:#DC2626':avail<5?'color:#D97706':''
+      html += `<option value="${p.id}"${l.prod&&l.prod.id===p.id?' selected':''} style="${color}">${p.name} — stock: ${avail} ${p.uom}</option>`
+    })
+    html += '</select>'
+    if(l.prod) html += `<div style="font-size:9px;margin-top:2px;${stockColor}">Available in stock: <strong>${stockQty} ${l.prod.uom||''}</strong>${stockQty<=0?' ⚠️ OUT OF STOCK':stockQty<5?' ⚠️ LOW STOCK':' ✓'}</div>`
+    html += '</td>'
     html += '<td style="padding:4px"><input id="inv-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="setInvQty('+i+',this.value)" onchange="setInvQty('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-price-'+i+'" type="number" value="'+(l.price||0)+'" min="0" step="0.01" oninput="setInvPrice('+i+',this.value)" onchange="setInvPrice('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-disc-line-'+i+'" type="number" value="'+(l.disc||0)+'" min="0" max="100" step="1" oninput="setInvDisc('+i+',this.value)" onchange="setInvDisc('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="inv-lt-'+i+'">'+fc(lt,cur)+'</td>'
-    html += '<td style="padding:4px 0"><button onclick="rmInvLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px" title="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
+    html += '<td style="padding:4px 0"><button onclick="rmInvLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
     html += '</tr>'
   })
+  // TOTALS ROW
+  const totalQty = invLines.reduce((a,l)=>a+(parseFloat(l.qty)||0),0)
+  const totalAmt = invLines.reduce((a,l)=>a+(parseFloat(l.qty)||0)*(parseFloat(l.price)||0)*(1-(parseFloat(l.disc)||0)/100),0)
+  html += `<tr style="background:#F9FAFB;border-top:2px solid var(--bdr)">
+    <td style="padding:7px 8px;font-size:11px;font-weight:700;color:var(--tx2)">TOTAL</td>
+    <td style="padding:7px 4px;text-align:center;font-weight:700;color:var(--acc);font-size:13px">${totalQty}</td>
+    <td colspan="2"></td>
+    <td style="padding:7px 4px;text-align:right;font-weight:700;color:var(--acc);font-size:13px">${fc(totalAmt,cur)}</td>
+    <td></td>
+  </tr>`
   html += '</tbody></table>'
   el('inv-lines').innerHTML = html
   calcInv()
@@ -143,7 +163,7 @@ window.refreshInvLine = function(i) {
 
 function renderPoLines() {
   const cur = el('po-cur')?.value || baseCur
-  let html = '<table style="width:100%;border-collapse:collapse;margin-bottom:8px"><thead><tr style="background:#F9FAFB">'
+  let html = '<table style="width:100%;border-collapse:collapse;margin-bottom:4px"><thead><tr style="background:#F9FAFB">'
   html += '<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr)">PRODUCT</th>'
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:65px">QTY</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:100px">UNIT COST</th>'
@@ -151,16 +171,35 @@ function renderPoLines() {
   html += '<th style="border-bottom:1px solid var(--bdr);width:26px"></th></tr></thead><tbody>'
   poLines.forEach((l,i) => {
     const qty=parseFloat(l.qty)||0, cost=parseFloat(l.cost)||0, lt=qty*cost
+    const stockQty = l.prod ? (l.prod.qty||0) : null
+    const stockColor = stockQty===null?'':stockQty<=0?'color:#DC2626':stockQty<5?'color:#D97706':'color:#16A34A'
     html += '<tr>'
-    html += '<td style="padding:4px 4px 4px 0"><select id="po-prod-'+i+'" onchange="plProd('+i+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;background:var(--inp)"><option value="">Select product...</option>'
-    products.forEach(p => { html += '<option value="'+p.id+'"'+(l.prod&&l.prod.id===p.id?' selected':'')+'>'+p.name+'</option>' })
-    html += '</select></td>'
+    html += '<td style="padding:4px 4px 4px 0">'
+    html += '<select id="po-prod-'+i+'" onchange="plProd('+i+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;background:var(--inp)">'
+    html += '<option value="">Select product...</option>'
+    products.forEach(p => {
+      const avail = p.qty||0
+      html += `<option value="${p.id}"${l.prod&&l.prod.id===p.id?' selected':''}>${p.name} — stock: ${avail} ${p.uom}</option>`
+    })
+    html += '</select>'
+    if(l.prod) html += `<div style="font-size:9px;margin-top:2px;${stockColor}">Current stock: <strong>${stockQty} ${l.prod.uom||''}</strong> → after purchase: <strong style="color:var(--grn)">${stockQty+qty} ${l.prod.uom||''}</strong></div>`
+    html += '</td>'
     html += '<td style="padding:4px"><input id="po-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="setPoQty('+i+',this.value)" onchange="setPoQty('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="po-cost-'+i+'" type="number" value="'+(l.cost||0)+'" min="0" step="0.01" oninput="setPoQost('+i+',this.value)" onchange="setPoQost('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="po-lt-'+i+'">'+fc(lt,cur)+'</td>'
     html += '<td style="padding:4px 0"><button onclick="rmPoLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
     html += '</tr>'
   })
+  // TOTALS ROW
+  const totalQty = poLines.reduce((a,l)=>a+(parseFloat(l.qty)||0),0)
+  const totalAmt = poLines.reduce((a,l)=>a+(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0),0)
+  html += `<tr style="background:#F9FAFB;border-top:2px solid var(--bdr)">
+    <td style="padding:7px 8px;font-size:11px;font-weight:700;color:var(--tx2)">TOTAL</td>
+    <td style="padding:7px 4px;text-align:center;font-weight:700;color:var(--acc);font-size:13px">${totalQty}</td>
+    <td></td>
+    <td style="padding:7px 4px;text-align:right;font-weight:700;color:var(--acc);font-size:13px">${fc(totalAmt,cur)}</td>
+    <td></td>
+  </tr>`
   html += '</tbody></table>'
   el('po-lines').innerHTML = html
   calcPo()
@@ -194,10 +233,8 @@ window.ilProd = function(i, pid) {
   invLines[i].prod = p || null
   if(p) {
     invLines[i].price = parseFloat(p.sell_price) || 0
-    const inp = el('inv-price-'+i)
-    if(inp) inp.value = p.sell_price || 0
-    refreshInvLine(i)
   }
+  renderInvLines()
 }
 
 // ── PO LINE PRODUCT SELECTED ──────────────────────────────
@@ -206,10 +243,8 @@ window.plProd = function(i, pid) {
   poLines[i].prod = p || null
   if(p) {
     poLines[i].cost = parseFloat(p.cost_price) || 0
-    const inp = el('po-cost-'+i)
-    if(inp) inp.value = p.cost_price || 0
-    refreshPoLine(i)
   }
+  renderPoLines()
 }
 
 // ── UPDATE INV LINE FIELD ─────────────────────────────────
@@ -459,9 +494,9 @@ window.saveInvoice = async function() {
     closeModal('mo-invoice'); saved(); toast('Invoice updated!'); updateBadges()
   } else {
     // ── CREATE NEW INVOICE ──
-    // Make sure number is unique - append timestamp if needed
+    // Make sure number is unique (skip check if editing same invoice)
     let invNumber = el('inv-num').value
-    const existing = invoices.find(i => i.number === invNumber)
+    const existing = invoices.find(i => i.number === invNumber && i.id !== editId)
     if(existing) {
       invNumber = (settings.invoice_prefix||'INV-') + Date.now().toString().slice(-6)
       el('inv-num').value = invNumber
@@ -553,28 +588,70 @@ window.savePurchase = async function() {
   const sid=el('po-sup').value; if(!sid)return alert('Select a supplier')
   const valid=poLines.filter(l=>l.prod); if(!valid.length)return alert('Add at least one product')
   const cur=el('po-cur').value||baseCur
-  const total=poLines.reduce((a,l)=>a+l.qty*l.cost,0)
+  const total=poLines.reduce((a,l)=>(parseFloat(a)||0)+(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0),0)
   const baseAmt=toBase(total,cur)
   const status=el('po-status').value
-  const paid=status==='paid'?baseAmt:0
+  const paid=status==='paid'?baseAmt:status==='partial'?baseAmt*0.5:0
   const supp=suppliers.find(s=>s.id===sid)
   const btn=el('po-save-btn'); btn.disabled=true; btn.textContent='Saving...'
-  // Make sure PO number is unique
-  let poNumber = el('po-num').value
-  const existingPo = purchases.find(p => p.number === poNumber)
-  if(existingPo) {
-    poNumber = (settings.po_prefix||'PO-') + Date.now().toString().slice(-6)
-    el('po-num').value = poNumber
+  const editId=el('mo-purchase').dataset.editId
+
+  if(editId) {
+    // ── UPDATE EXISTING PO ──
+    const oldPo=purchases.find(p=>p.id===editId)
+    const oldStatus=el('mo-purchase').dataset.editOldStatus
+    const oldBaseAmt=parseFloat(el('mo-purchase').dataset.editBaseAmt)||0
+    const poData={number:el('po-num').value,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}
+    const {error}=await sb.from('purchases').update(poData).eq('id',editId)
+    if(error){btn.disabled=false;btn.textContent='Update PO';return toast('Error: '+error.message,false)}
+    // Replace lines
+    await sb.from('purchase_lines').delete().eq('purchase_id',editId)
+    await sb.from('purchase_lines').insert(poLines.map(l=>({purchase_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:parseFloat(l.qty)||0,unit_cost:parseFloat(l.cost)||0,line_total:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0)})))
+    // Update stock cost prices
+    for(const l of valid){
+      const p=products.find(x=>x.id===l.prod.id)
+      if(p) p.cost_price=parseFloat(l.cost)||0
+      await sb.from('products').update({cost_price:parseFloat(l.cost)||0}).eq('id',l.prod.id)
+    }
+    // Update PO in memory
+    if(oldPo) Object.assign(oldPo, poData)
+    // Fix supplier balance: reverse old, apply new
+    if(supp){
+      supp.totalPurchased=(supp.totalPurchased||0)-oldBaseAmt+baseAmt
+      if(oldStatus==='paid') supp.totalPaid=(supp.totalPaid||0)-oldBaseAmt
+      else supp.owed=Math.max(0,(supp.owed||0)-oldBaseAmt)
+      if(status==='paid') supp.totalPaid=(supp.totalPaid||0)+baseAmt
+      else supp.owed=(supp.owed||0)+baseAmt
+    }
+    // Cleanup edit mode
+    delete el('mo-purchase').dataset.editId
+    delete el('mo-purchase').dataset.editOldStatus
+    delete el('mo-purchase').dataset.editBaseAmt
+    btn.disabled=false; btn.textContent='Save PO'
+    // Reset modal title
+    const h3=el('mo-purchase').querySelector('.mh h3')
+    if(h3) h3.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg> New Purchase Order'
+    renderPurchases(); renderSuppliers(); renderStock(); renderDash()
+    closeModal('mo-purchase'); saved(); toast('Purchase order updated! ✓'); updateBadges()
+
+  } else {
+    // ── CREATE NEW PO ──
+    let poNumber = el('po-num').value
+    const existingPo = purchases.find(p => p.number === poNumber)
+    if(existingPo) {
+      poNumber = (settings.po_prefix||'PO-') + Date.now().toString().slice(-6)
+      el('po-num').value = poNumber
+    }
+    const {data:po,error}=await sb.from('purchases').insert({number:poNumber,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}).select().single()
+    if(error){btn.disabled=false;btn.textContent='Save PO';return toast('Error: '+error.message,false)}
+    await sb.from('purchase_lines').insert(poLines.map(l=>({purchase_id:po.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:parseFloat(l.qty)||0,unit_cost:parseFloat(l.cost)||0,line_total:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0)})))
+    for(const l of valid){await sb.from('products').update({qty:(l.prod.qty||0)+parseFloat(l.qty),cost_price:parseFloat(l.cost)||0}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p){p.qty+=parseFloat(l.qty);p.cost_price=parseFloat(l.cost)||0}}
+    purchases.unshift(po)
+    if(supp){supp.totalPurchased=(supp.totalPurchased||0)+baseAmt;if(status==='paid')supp.totalPaid=(supp.totalPaid||0)+baseAmt;else supp.owed=(supp.owed||0)+baseAmt}
+    btn.disabled=false; btn.textContent='Save PO'
+    renderPurchases(); renderSuppliers(); renderStock(); renderDash()
+    closeModal('mo-purchase'); saved(); toast('Purchase saved! ✓'); updateBadges()
   }
-  const {data:po,error}=await sb.from('purchases').insert({number:poNumber,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}).select().single()
-  if(error){btn.disabled=false;btn.textContent='Save PO';return toast('Error: '+error.message,false)}
-  await sb.from('purchase_lines').insert(poLines.map(l=>({purchase_id:po.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_cost:l.cost,line_total:l.qty*l.cost})))
-  for(const l of valid){await sb.from('products').update({qty:(l.prod.qty||0)+l.qty,cost_price:l.cost}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p){p.qty+=l.qty;p.cost_price=l.cost}}
-  purchases.unshift(po)
-  if(supp){supp.totalPurchased=(supp.totalPurchased||0)+baseAmt;if(status==='paid')supp.totalPaid=(supp.totalPaid||0)+baseAmt;else supp.owed=(supp.owed||0)+baseAmt}
-  btn.disabled=false; btn.textContent='Save PO'
-  renderPurchases(); renderSuppliers(); renderStock(); renderDash()
-  closeModal('mo-purchase'); saved(); toast('Purchase saved!'); updateBadges()
 }
 window.delPurchase = async function(id) {
   if(!confirm('Delete?'))return
