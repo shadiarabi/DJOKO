@@ -101,17 +101,38 @@ window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPo
 
 function renderInvLines() {
   const cur = el('inv-cur')?.value||baseCur
-  el('inv-lines').innerHTML = invLines.map((l,i) => `
-    <div style="display:grid;grid-template-columns:2fr 60px 80px 55px 28px;gap:5px;margin-bottom:7px;align-items:center">
-      <select onchange="ilProd(${i},this.value)" style="padding:6px 7px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px">
+  const header = `<div style="display:grid;grid-template-columns:2fr 60px 80px 55px 28px;gap:5px;margin-bottom:4px;padding:0 2px">
+    <span style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Product</span>
+    <span style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Qty</span>
+    <span style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Price</span>
+    <span style="font-size:10px;font-weight:600;color:var(--tx2);text-transform:uppercase">Disc%</span>
+    <span></span>
+  </div>`
+  const rows = invLines.map((l,i) => {
+    const lineTotal = l.qty * l.price * (1 - (l.disc||0)/100)
+    return `<div style="display:grid;grid-template-columns:2fr 60px 80px 55px 28px;gap:5px;margin-bottom:6px;align-items:center">
+      <select onchange="ilProd(${i},this.value)" style="padding:6px 7px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;background:var(--inp)">
         <option value="">Select product...</option>
         ${products.map(p=>`<option value="${p.id}"${l.prod?.id===p.id?'selected':''}>${p.name}</option>`).join('')}
       </select>
-      <input type="number" value="${l.qty}" min="1" onchange="invLines[${i}].qty=parseFloat(this.value)||1;calcInv()" style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%">
-      <input type="number" value="${l.price}" min="0" onchange="invLines[${i}].price=parseFloat(this.value)||0;calcInv()" style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%">
-      <input type="number" value="${l.disc}" min="0" max="100" title="Disc%" onchange="invLines[${i}].disc=parseFloat(this.value)||0;calcInv()" style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%">
-      <button class="btn icon ghost" onclick="invLines.splice(${i},1);renderInvLines()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-    </div>`).join('')
+      <input type="number" value="${l.qty}" min="1" step="1"
+        oninput="invLines[${i}].qty=parseFloat(this.value)||1;calcInv()"
+        style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:center">
+      <input type="number" value="${l.price}" min="0" step="0.01"
+        oninput="invLines[${i}].price=parseFloat(this.value)||0;calcInv()"
+        style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:right">
+      <input type="number" value="${l.disc||0}" min="0" max="100" step="1"
+        oninput="invLines[${i}].disc=parseFloat(this.value)||0;calcInv()"
+        style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:center">
+      <button class="btn icon ghost" onclick="invLines.splice(${i},1);renderInvLines();calcInv()" title="Remove line">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div style="text-align:right;font-size:10px;color:var(--tx2);margin:-4px 32px 6px 0">
+      Line total: <strong style="color:var(--txt)">${fc(lineTotal, cur)}</strong>
+    </div>`
+  }).join('')
+  el('inv-lines').innerHTML = header + rows
   calcInv()
 }
 function renderPoLines() {
@@ -130,11 +151,20 @@ function renderPoLines() {
 window.ilProd = function(i,id) { const p=products.find(x=>x.id===id); invLines[i].prod=p||null; if(p)invLines[i].price=p.sell_price||0; renderInvLines() }
 window.plProd = function(i,id) { const p=products.find(x=>x.id===id); poLines[i].prod=p||null; if(p)poLines[i].cost=p.cost_price||0; renderPoLines() }
 window.calcInv = function() {
-  const cur=el('inv-cur')?.value||baseCur
-  const sub=invLines.reduce((a,l)=>a+l.qty*l.price*(1-(l.disc||0)/100),0)
-  const disc=parseFloat(el('inv-disc')?.value)||0
-  el('inv-sub').textContent=fc(sub,cur)
-  el('inv-total').textContent=fc(sub*(1-disc/100),cur)
+  const cur = el('inv-cur')?.value || baseCur
+  // Sum each line: qty * price * (1 - line_disc/100)
+  const sub = invLines.reduce((a,l) => {
+    const qty = parseFloat(l.qty) || 0
+    const price = parseFloat(l.price) || 0
+    const disc = parseFloat(l.disc) || 0
+    return a + qty * price * (1 - disc/100)
+  }, 0)
+  const discPct = parseFloat(el('inv-disc')?.value) || 0
+  const discAmt = sub * discPct / 100
+  const total = sub - discAmt
+  if(el('inv-sub')) el('inv-sub').textContent = fc(sub, cur)
+  if(el('inv-disc-amt')) el('inv-disc-amt').textContent = discAmt > 0 ? '- '+fc(discAmt, cur) : ''
+  if(el('inv-total')) el('inv-total').textContent = fc(total, cur)
 }
 window.calcPo = function() {
   const cur=el('po-cur')?.value||baseCur
@@ -281,11 +311,16 @@ window.saveInvoice = async function() {
   const cid=el('inv-cust').value; if(!cid)return alert('Select a customer')
   const valid=invLines.filter(l=>l.prod); if(!valid.length)return alert('Add at least one product')
   const cur=el('inv-cur').value||baseCur
-  const sub=invLines.reduce((a,l)=>a+l.qty*l.price*(1-(l.disc||0)/100),0)
-  const disc=parseFloat(el('inv-disc').value)||0
-  const total=sub*(1-disc/100)
+  const sub=invLines.reduce((a,l)=>{
+    const qty=parseFloat(l.qty)||0
+    const price=parseFloat(l.price)||0
+    const disc=parseFloat(l.disc)||0
+    return a + qty*price*(1-disc/100)
+  },0)
+  const discPct=parseFloat(el('inv-disc').value)||0
+  const total=sub*(1-discPct/100)
   const baseAmt=toBase(total,cur)
-  const cogs=valid.reduce((a,l)=>a+l.qty*(l.prod.cost_price||0),0)
+  const cogs=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(l.prod.cost_price||0)),0)
   const status=el('inv-status').value
   const paid=status==='paid'?baseAmt:status==='partial'?baseAmt*0.5:0
   const cust=customers.find(c=>c.id===cid)
@@ -297,7 +332,7 @@ window.saveInvoice = async function() {
     const oldInv=invoices.find(i=>i.id===editId)
     const oldStatus=el('mo-invoice').dataset.editOldStatus
     const oldBaseAmt=parseFloat(el('mo-invoice').dataset.editBaseAmt)||0
-    const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:disc,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}
+    const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}
     const {error}=await sb.from('invoices').update(invData).eq('id',editId)
     if(error){btn.disabled=false;btn.textContent='Update invoice';return toast('Error: '+error.message,false)}
     // Replace lines
@@ -323,7 +358,7 @@ window.saveInvoice = async function() {
     closeModal('mo-invoice'); saved(); toast('Invoice updated!'); updateBadges()
   } else {
     // ── CREATE NEW INVOICE ──
-    const {data:inv,error}=await sb.from('invoices').insert({number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:disc,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}).select().single()
+    const {data:inv,error}=await sb.from('invoices').insert({number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
     await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
     for(const l of valid){await sb.from('products').update({qty:Math.max(0,(l.prod.qty||0)-l.qty)}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p)p.qty=Math.max(0,p.qty-l.qty)}
@@ -344,32 +379,61 @@ window.delInvoice = async function(id) {
   renderInvoices(); renderCustomers(); renderDash(); toast('Deleted'); updateBadges()
 }
 window.editInvoice = async function(id) {
-  const inv=invoices.find(i=>i.id===id); if(!inv)return
-  // Load invoice lines from DB
-  const {data:lines}=await sb.from('invoice_lines').select('*').eq('invoice_id',id)
-  // Populate the invoice modal with existing data
-  bcs('inv-cur',inv.currency)
-  el('inv-date').value=inv.date
-  el('inv-due').value=inv.due_date||''
-  el('inv-num').value=inv.number
-  el('inv-disc').value=inv.discount_pct||0
-  el('inv-status').value=inv.status
-  el('inv-notes').value=inv.notes||''
-  pSel('inv-cust',customers,'name','<option value="">Select customer...</option>')
-  el('inv-cust').value=inv.customer_id
-  // Rebuild invLines from DB lines
-  invLines=(lines||[]).map(l=>{
-    const prod=products.find(p=>p.id===l.product_id)||{id:l.product_id,name:l.product_name,code:l.product_code,cost_price:0,sell_price:l.unit_price}
-    return {prod,qty:l.qty,price:l.unit_price,disc:l.discount_pct||0}
+  const inv = invoices.find(i=>i.id===id)
+  if(!inv) return toast('Invoice not found', false)
+
+  // Load line items from DB
+  const {data:lines, error} = await sb.from('invoice_lines').select('*').eq('invoice_id', id)
+  if(error) return toast('Error loading invoice: '+error.message, false)
+
+  // Fill in header fields
+  bcs('inv-cur', inv.currency)
+  el('inv-date').value = inv.date || ''
+  el('inv-due').value = inv.due_date || ''
+  el('inv-num').value = inv.number || ''
+  el('inv-disc').value = parseFloat(inv.discount_pct) || 0
+  el('inv-status').value = inv.status || 'pending'
+  el('inv-notes').value = inv.notes || ''
+
+  // Set customer
+  pSel('inv-cust', customers, 'name', '<option value="">Select customer...</option>')
+  el('inv-cust').value = inv.customer_id || ''
+
+  // Rebuild line items — match product from products array
+  invLines = (lines||[]).map(l => {
+    const prod = products.find(p => p.id === l.product_id) || {
+      id: l.product_id,
+      name: l.product_name || 'Unknown',
+      code: l.product_code || '',
+      cost_price: 0,
+      sell_price: parseFloat(l.unit_price) || 0,
+      qty: 0
+    }
+    return {
+      prod,
+      qty: parseFloat(l.qty) || 1,
+      price: parseFloat(l.unit_price) || 0,
+      disc: parseFloat(l.discount_pct) || 0
+    }
   })
-  if(!invLines.length) invLines=[{prod:null,qty:1,price:0,disc:0}]
+
+  // Ensure at least one line
+  if(!invLines.length) invLines = [{prod:null, qty:1, price:0, disc:0}]
+
+  // Render lines and recalculate total
   renderInvLines()
-  // Mark as edit mode
-  el('mo-invoice').dataset.editId=id
-  el('mo-invoice').dataset.editOldStatus=inv.status
-  el('mo-invoice').dataset.editBaseAmt=inv.base_amount
-  el('inv-save-btn').textContent='Update invoice'
-  el('mo-invoice').querySelector('.mh h3').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Edit Invoice'
+  calcInv()
+
+  // Set edit mode flags
+  el('mo-invoice').dataset.editId = id
+  el('mo-invoice').dataset.editOldStatus = inv.status
+  el('mo-invoice').dataset.editBaseAmt = inv.base_amount
+
+  // Update modal title and button
+  el('inv-save-btn').textContent = 'Update invoice'
+  const h3 = el('mo-invoice').querySelector('.mh h3')
+  if(h3) h3.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--org)"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Edit Invoice — '+inv.number
+
   el('mo-invoice').classList.add('open')
 }
 window.fInv = function(s) { el('inv-tb').querySelectorAll('tr:not(.erow)').forEach(r=>r.style.display=(s==='all'||r.textContent.includes(s))?'':'none') }
