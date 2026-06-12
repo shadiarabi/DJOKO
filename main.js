@@ -116,20 +116,23 @@ function renderInvLines() {
         ${products.map(p=>`<option value="${p.id}"${l.prod?.id===p.id?'selected':''}>${p.name}</option>`).join('')}
       </select>
       <input type="number" value="${l.qty}" min="1" step="1"
-        oninput="invLines[${i}].qty=parseFloat(this.value)||1;calcInv()"
+        oninput="updateInvLine(${i},'qty',this.value)"
+        onchange="updateInvLine(${i},'qty',this.value)"
         style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:center">
       <input type="number" value="${l.price}" min="0" step="0.01"
-        oninput="invLines[${i}].price=parseFloat(this.value)||0;calcInv()"
+        oninput="updateInvLine(${i},'price',this.value)"
+        onchange="updateInvLine(${i},'price',this.value)"
         style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:right">
       <input type="number" value="${l.disc||0}" min="0" max="100" step="1"
-        oninput="invLines[${i}].disc=parseFloat(this.value)||0;calcInv()"
+        oninput="updateInvLine(${i},'disc',this.value)"
+        onchange="updateInvLine(${i},'disc',this.value)"
         style="padding:6px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:100%;background:var(--inp);text-align:center">
       <button class="btn icon ghost" onclick="invLines.splice(${i},1);renderInvLines();calcInv()" title="Remove line">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div style="text-align:right;font-size:10px;color:var(--tx2);margin:-4px 32px 6px 0">
-      Line total: <strong style="color:var(--txt)">${fc(lineTotal, cur)}</strong>
+      Line total: <strong id="inv-line-total-${i}" style="color:var(--txt)">${fc(lineTotal, cur)}</strong>
     </div>`
   }).join('')
   el('inv-lines').innerHTML = header + rows
@@ -148,7 +151,36 @@ function renderPoLines() {
     </div>`).join('')
   calcPo()
 }
-window.ilProd = function(i,id) { const p=products.find(x=>x.id===id); invLines[i].prod=p||null; if(p)invLines[i].price=p.sell_price||0; renderInvLines() }
+window.ilProd = function(i,id) {
+  const p=products.find(x=>x.id===id)
+  invLines[i].prod=p||null
+  if(p) invLines[i].price=p.sell_price||0
+  renderInvLines()
+}
+window.updateInvLine = function(i, field, val) {
+  const num = parseFloat(val)
+  invLines[i][field] = isNaN(num) ? 0 : num
+  if(field === 'qty' && invLines[i].qty < 1) invLines[i].qty = 1
+  // Update line total display without re-rendering inputs
+  const cur = document.getElementById('inv-cur')?.value || baseCur
+  const l = invLines[i]
+  const lineTotal = (parseFloat(l.qty)||0) * (parseFloat(l.price)||0) * (1 - (parseFloat(l.disc)||0)/100)
+  const lineTotalEl = document.getElementById('inv-line-total-'+i)
+  if(lineTotalEl) lineTotalEl.textContent = fc(lineTotal, cur)
+  calcInv()
+}
+window.updatePoLine = function(i, field, val) {
+  const num = parseFloat(val)
+  poLines[i][field] = isNaN(num) ? 0 : num
+  if(field === 'qty' && poLines[i].qty < 1) poLines[i].qty = 1
+  // Update line total display without re-rendering inputs
+  const cur = document.getElementById('po-cur')?.value || baseCur
+  const l = poLines[i]
+  const lineTotal = (parseFloat(l.qty)||0) * (parseFloat(l.cost)||0)
+  const lineTotalEl = document.getElementById('po-line-total-'+i)
+  if(lineTotalEl) lineTotalEl.textContent = fc(lineTotal, cur)
+  calcPo()
+}
 window.plProd = function(i,id) { const p=products.find(x=>x.id===id); poLines[i].prod=p||null; if(p)poLines[i].cost=p.cost_price||0; renderPoLines() }
 window.calcInv = function() {
   const cur = el('inv-cur')?.value || baseCur
