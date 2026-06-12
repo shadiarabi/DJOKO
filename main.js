@@ -75,7 +75,16 @@ window.openModal = function(id) {
   if(id==='mo-customer') bcs('cl-cur')
   if(id==='mo-supplier') bcs('su-cur')
   if(id==='mo-stock') el('sk-code').value='PRD-'+(products.length+1).toString().padStart(3,'0')
-  if(id==='mo-invoice'){bcs('inv-cur');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30);el('inv-num').value=(settings.invoice_prefix||'INV-')+(invoices.length+1).toString().padStart(3,'0');pSel('inv-cust',customers,'name','<option value="">Select customer...</option>');invLines=[];addInvLine();renderInvLines()}
+  if(id==='mo-invoice'){
+    bcs('inv-cur');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30)
+    el('inv-num').value=(settings.invoice_prefix||'INV-')+(invoices.length+1).toString().padStart(3,'0')
+    el('inv-disc').value=0; el('inv-status').value='pending'; el('inv-notes').value=''
+    pSel('inv-cust',customers,'name','<option value="">Select customer...</option>')
+    invLines=[];addInvLine();renderInvLines()
+    delete el('mo-invoice').dataset.editId
+    el('inv-save-btn').textContent='Save invoice'
+    el('mo-invoice').querySelector('.mh h3').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> New Sales Invoice'
+  }
   if(id==='mo-purchase'){bcs('po-cur');el('po-date').value=d;el('po-del').value=addD(d,14);el('po-num').value=(settings.po_prefix||'PO-')+(purchases.length+1).toString().padStart(3,'0');pSel('po-sup',suppliers,'name','<option value="">Select supplier...</option>');poLines=[];addPoLine();renderPoLines()}
   if(id==='mo-receipt'){bcs('rc-cur');el('rc-date').value=d;pSel('rc-cust',customers,'name','<option value="">Select customer...</option>')}
   if(id==='mo-payment'){bcs('py-cur');el('py-date').value=d;pSel('py-sup',suppliers,'name','<option value="">Select supplier...</option>')}
@@ -278,18 +287,52 @@ window.saveInvoice = async function() {
   const baseAmt=toBase(total,cur)
   const cogs=valid.reduce((a,l)=>a+l.qty*(l.prod.cost_price||0),0)
   const status=el('inv-status').value
-  const paid=status==='paid'?baseAmt:0
+  const paid=status==='paid'?baseAmt:status==='partial'?baseAmt*0.5:0
   const cust=customers.find(c=>c.id===cid)
   const btn=el('inv-save-btn'); btn.disabled=true; btn.textContent='Saving...'
-  const {data:inv,error}=await sb.from('invoices').insert({number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:disc,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}).select().single()
-  if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
-  await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
-  for(const l of valid){await sb.from('products').update({qty:Math.max(0,(l.prod.qty||0)-l.qty)}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p)p.qty=Math.max(0,p.qty-l.qty)}
-  invoices.unshift(inv)
-  if(cust){cust.totalInvoiced=(cust.totalInvoiced||0)+baseAmt;if(status==='paid')cust.totalPaid=(cust.totalPaid||0)+baseAmt;else cust.balance=(cust.balance||0)+baseAmt}
-  btn.disabled=false; btn.textContent='Save invoice'
-  renderInvoices(); renderCustomers(); renderStock(); renderDash()
-  closeModal('mo-invoice'); saved(); toast('Invoice saved!'); updateBadges()
+  const editId=el('mo-invoice').dataset.editId
+
+  if(editId) {
+    // ── UPDATE EXISTING INVOICE ──
+    const oldInv=invoices.find(i=>i.id===editId)
+    const oldStatus=el('mo-invoice').dataset.editOldStatus
+    const oldBaseAmt=parseFloat(el('mo-invoice').dataset.editBaseAmt)||0
+    const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:disc,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}
+    const {error}=await sb.from('invoices').update(invData).eq('id',editId)
+    if(error){btn.disabled=false;btn.textContent='Update invoice';return toast('Error: '+error.message,false)}
+    // Replace lines
+    await sb.from('invoice_lines').delete().eq('invoice_id',editId)
+    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
+    // Update invoice in memory
+    Object.assign(oldInv,invData)
+    // Fix customer balance: reverse old, apply new
+    if(cust){
+      cust.totalInvoiced=(cust.totalInvoiced||0)-oldBaseAmt+baseAmt
+      if(oldStatus==='paid') cust.totalPaid=(cust.totalPaid||0)-oldBaseAmt
+      else cust.balance=Math.max(0,(cust.balance||0)-oldBaseAmt)
+      if(status==='paid') cust.totalPaid=(cust.totalPaid||0)+baseAmt
+      else cust.balance=(cust.balance||0)+baseAmt
+    }
+    // Cleanup edit mode
+    delete el('mo-invoice').dataset.editId
+    delete el('mo-invoice').dataset.editOldStatus
+    delete el('mo-invoice').dataset.editBaseAmt
+    btn.disabled=false; btn.textContent='Save invoice'
+    el('mo-invoice').querySelector('.mh h3').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> New Sales Invoice'
+    renderInvoices(); renderCustomers(); renderStock(); renderDash()
+    closeModal('mo-invoice'); saved(); toast('Invoice updated!'); updateBadges()
+  } else {
+    // ── CREATE NEW INVOICE ──
+    const {data:inv,error}=await sb.from('invoices').insert({number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:disc,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}).select().single()
+    if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
+    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
+    for(const l of valid){await sb.from('products').update({qty:Math.max(0,(l.prod.qty||0)-l.qty)}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p)p.qty=Math.max(0,p.qty-l.qty)}
+    invoices.unshift(inv)
+    if(cust){cust.totalInvoiced=(cust.totalInvoiced||0)+baseAmt;if(status==='paid')cust.totalPaid=(cust.totalPaid||0)+baseAmt;else cust.balance=(cust.balance||0)+baseAmt}
+    btn.disabled=false; btn.textContent='Save invoice'
+    renderInvoices(); renderCustomers(); renderStock(); renderDash()
+    closeModal('mo-invoice'); saved(); toast('Invoice saved!'); updateBadges()
+  }
 }
 window.delInvoice = async function(id) {
   if(!confirm('Delete?'))return
@@ -300,21 +343,34 @@ window.delInvoice = async function(id) {
   if(c){c.totalInvoiced-=inv.base_amount;if(inv.status==='paid')c.totalPaid-=inv.paid_amount;else c.balance-=inv.balance}
   renderInvoices(); renderCustomers(); renderDash(); toast('Deleted'); updateBadges()
 }
-window.editInvoiceStatus = async function(id) {
+window.editInvoice = async function(id) {
   const inv=invoices.find(i=>i.id===id); if(!inv)return
-  const newStatus=prompt('Change status:\npending / partial / paid', inv.status)
-  if(!newStatus||!['pending','partial','paid'].includes(newStatus))return
-  const oldStatus=inv.status
-  const cust=customers.find(c=>c.id===inv.customer_id)
-  const paid=newStatus==='paid'?inv.base_amount:newStatus==='partial'?inv.base_amount*0.5:0
-  const balance=inv.base_amount-paid
-  await sb.from('invoices').update({status:newStatus,paid_amount:paid,balance}).eq('id',id)
-  inv.status=newStatus; inv.paid_amount=paid; inv.balance=balance
-  if(cust){
-    if(oldStatus!=='paid'&&newStatus==='paid'){cust.totalPaid=(cust.totalPaid||0)+inv.base_amount;cust.balance=Math.max(0,(cust.balance||0)-inv.base_amount)}
-    else if(oldStatus==='paid'&&newStatus!=='paid'){cust.totalPaid=Math.max(0,(cust.totalPaid||0)-inv.base_amount);cust.balance=(cust.balance||0)+inv.base_amount}
-  }
-  renderInvoices(); renderCustomers(); renderDash(); saved(); toast('Invoice status updated to: '+newStatus); updateBadges()
+  // Load invoice lines from DB
+  const {data:lines}=await sb.from('invoice_lines').select('*').eq('invoice_id',id)
+  // Populate the invoice modal with existing data
+  bcs('inv-cur',inv.currency)
+  el('inv-date').value=inv.date
+  el('inv-due').value=inv.due_date||''
+  el('inv-num').value=inv.number
+  el('inv-disc').value=inv.discount_pct||0
+  el('inv-status').value=inv.status
+  el('inv-notes').value=inv.notes||''
+  pSel('inv-cust',customers,'name','<option value="">Select customer...</option>')
+  el('inv-cust').value=inv.customer_id
+  // Rebuild invLines from DB lines
+  invLines=(lines||[]).map(l=>{
+    const prod=products.find(p=>p.id===l.product_id)||{id:l.product_id,name:l.product_name,code:l.product_code,cost_price:0,sell_price:l.unit_price}
+    return {prod,qty:l.qty,price:l.unit_price,disc:l.discount_pct||0}
+  })
+  if(!invLines.length) invLines=[{prod:null,qty:1,price:0,disc:0}]
+  renderInvLines()
+  // Mark as edit mode
+  el('mo-invoice').dataset.editId=id
+  el('mo-invoice').dataset.editOldStatus=inv.status
+  el('mo-invoice').dataset.editBaseAmt=inv.base_amount
+  el('inv-save-btn').textContent='Update invoice'
+  el('mo-invoice').querySelector('.mh h3').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Edit Invoice'
+  el('mo-invoice').classList.add('open')
 }
 window.fInv = function(s) { el('inv-tb').querySelectorAll('tr:not(.erow)').forEach(r=>r.style.display=(s==='all'||r.textContent.includes(s))?'':'none') }
 
@@ -522,7 +578,7 @@ function renderInvoices() {
       <button class="btn sm" onclick="printInvoice('${inv.id}')" title="Print">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       </button>
-      <button class="btn icon ghost" onclick="editInvoiceStatus('${inv.id}')" title="Edit status" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+      <button class="btn icon ghost" onclick="editInvoice('${inv.id}')" title="Edit invoice" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       ${delBtn(`delInvoice('${inv.id}')`)}
     </td></tr>`).join('')
 }
