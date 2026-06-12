@@ -99,7 +99,7 @@ document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.
 window.changeCurrency = function() { baseCur=el('base-currency').value; renderAll() }
 
 // ── INVOICE LINES ─────────────────────────────────────────
-window.addInvLine = function() { invLines.push({prod:null,qty:1,price:0,disc:0}); renderInvLines() }
+window.addInvLine = function() { invLines.push({prod:null,qty:1,price:0,disc:0,com:0}); renderInvLines() }
 window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPoLines() }
 // ── RENDER INVOICE LINES ──────────────────────────────────
 function renderInvLines() {
@@ -109,6 +109,8 @@ function renderInvLines() {
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:65px">QTY</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">PRICE</th>'
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:55px">DISC%</th>'
+  html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:#7C3AED;border-bottom:1px solid var(--bdr);width:55px">COM%</th>'
+  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#7C3AED;border-bottom:1px solid var(--bdr);width:85px">COM $</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">TOTAL</th>'
   html += '<th style="border-bottom:1px solid var(--bdr);width:26px"></th>'
   html += '</tr></thead><tbody>'
@@ -133,6 +135,9 @@ function renderInvLines() {
     html += '<td style="padding:4px"><input id="inv-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="setInvQty('+i+',this.value)" onchange="setInvQty('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-price-'+i+'" type="number" value="'+(l.price||0)+'" min="0" step="0.01" oninput="setInvPrice('+i+',this.value)" onchange="setInvPrice('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-disc-line-'+i+'" type="number" value="'+(l.disc||0)+'" min="0" max="100" step="1" oninput="setInvDisc('+i+',this.value)" onchange="setInvDisc('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="inv-com-'+i+'" type="number" value="'+(l.com||0)+'" min="0" max="100" step="0.1" oninput="setInvCom('+i+',this.value)" onchange="setInvCom('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid #DDD6FE;border-radius:4px;font-size:12px;text-align:center;background:#F5F3FF;color:#7C3AED;font-weight:600"></td>'
+    const comAmt = lt * (parseFloat(l.com)||0) / 100
+    html += '<td style="padding:4px;text-align:right;font-size:11px;font-weight:600;color:#7C3AED" id="inv-com-amt-'+i+'">'+(comAmt>0?fc(comAmt,cur):'—')+'</td>'
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="inv-lt-'+i+'">'+fc(lt,cur)+'</td>'
     html += '<td style="padding:4px 0"><button onclick="rmInvLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
     html += '</tr>'
@@ -140,10 +145,16 @@ function renderInvLines() {
   // TOTALS ROW
   const totalQty = invLines.reduce((a,l)=>a+(parseFloat(l.qty)||0),0)
   const totalAmt = invLines.reduce((a,l)=>a+(parseFloat(l.qty)||0)*(parseFloat(l.price)||0)*(1-(parseFloat(l.disc)||0)/100),0)
+  const totalCom = invLines.reduce((a,l)=>{
+    const lt=(parseFloat(l.qty)||0)*(parseFloat(l.price)||0)*(1-(parseFloat(l.disc)||0)/100)
+    return a+lt*(parseFloat(l.com)||0)/100
+  },0)
   html += `<tr style="background:#F9FAFB;border-top:2px solid var(--bdr)">
     <td style="padding:7px 8px;font-size:11px;font-weight:700;color:var(--tx2)">TOTAL</td>
     <td style="padding:7px 4px;text-align:center;font-weight:700;color:var(--acc);font-size:13px">${totalQty}</td>
     <td colspan="2"></td>
+    <td style="padding:7px 4px;text-align:center;font-weight:700;color:#7C3AED;font-size:11px">${totalCom>0?'Com: '+fc(totalCom,cur):''}</td>
+    <td></td>
     <td style="padding:7px 4px;text-align:right;font-weight:700;color:var(--acc);font-size:13px">${fc(totalAmt,cur)}</td>
     <td></td>
   </tr>`
@@ -155,9 +166,11 @@ function renderInvLines() {
 window.refreshInvLine = function(i) {
   const cur = el('inv-cur')?.value || baseCur
   const l = invLines[i]
-  const qty=parseFloat(l.qty)||0, price=parseFloat(l.price)||0, disc=parseFloat(l.disc)||0
+  const qty=parseFloat(l.qty)||0, price=parseFloat(l.price)||0, disc=parseFloat(l.disc)||0, com=parseFloat(l.com)||0
   const lt = qty*price*(1-disc/100)
+  const comAmt = lt*com/100
   const e=el('inv-lt-'+i); if(e) e.textContent=fc(lt,cur)
+  const ec=el('inv-com-amt-'+i); if(ec) ec.textContent=comAmt>0?fc(comAmt,cur):'—'
   calcInv()
 }
 
@@ -215,6 +228,7 @@ window.refreshPoLine = function(i) {
 
 // ── GLOBAL LINE UPDATE HELPERS ─────────────────────────────
 window.setInvQty = function(i,v){ invLines[i].qty=parseFloat(v)||0; refreshInvLine(i) }
+window.setInvCom = function(i,v){ invLines[i].com=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvPrice = function(i,v){ invLines[i].price=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvDisc = function(i,v){ invLines[i].disc=parseFloat(v)||0; refreshInvLine(i) }
 window.setPoQty = function(i,v){ poLines[i].qty=parseFloat(v)||0; refreshPoLine(i) }
@@ -283,10 +297,16 @@ window.calcInv = function() {
   const discAmt = sub * discPct / 100
   const total = Math.max(0, sub - discAmt)
 
+  // Total commission
+  const totalCom = invLines.reduce((a,l)=>{
+    const lt=(parseFloat(l.qty)||0)*(parseFloat(l.price)||0)*(1-(parseFloat(l.disc)||0)/100)
+    return a+lt*(parseFloat(l.com)||0)/100
+  },0)
   // Show totals in invoice currency (BRL)
   if(el('inv-sub')) el('inv-sub').textContent = fc(sub, cur)
   if(el('inv-disc-amt')) el('inv-disc-amt').textContent = discAmt>0 ? '- '+fc(discAmt,cur) : ''
   if(el('inv-total')) el('inv-total').textContent = fc(total, cur)
+  if(el('inv-com-total')) el('inv-com-total').textContent = totalCom>0 ? fc(totalCom,cur) : '—'
 
   // USD equivalent: taxa = how many R$ per 1 USD (e.g. 5.50)
   // so USD = BRL total / taxa
@@ -473,7 +493,7 @@ window.saveInvoice = async function() {
     if(error){btn.disabled=false;btn.textContent='Update invoice';return toast('Error: '+error.message,false)}
     // Replace lines
     await sb.from('invoice_lines').delete().eq('invoice_id',editId)
-    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
+    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:l.com||0,commission_amt:(l.qty*l.price*(1-(l.disc||0)/100))*(l.com||0)/100,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
     // Update invoice in memory
     Object.assign(oldInv,invData)
     // Fix customer balance: reverse old, apply new
@@ -503,7 +523,7 @@ window.saveInvoice = async function() {
     }
     const {data:inv,error}=await sb.from('invoices').insert({number:invNumber,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
-    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
+    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:l.com||0,commission_amt:(l.qty*l.price*(1-(l.disc||0)/100))*(l.com||0)/100,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
     for(const l of valid){await sb.from('products').update({qty:Math.max(0,(l.prod.qty||0)-l.qty)}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p)p.qty=Math.max(0,p.qty-l.qty)}
     invoices.unshift(inv)
     if(cust){cust.totalInvoiced=(cust.totalInvoiced||0)+baseAmt;if(status==='paid')cust.totalPaid=(cust.totalPaid||0)+baseAmt;else cust.balance=(cust.balance||0)+baseAmt}
@@ -562,7 +582,8 @@ window.editInvoice = async function(id) {
       prod,
       qty: parseFloat(l.qty) || 1,
       price: parseFloat(l.unit_price) || 0,
-      disc: parseFloat(l.discount_pct) || 0
+      disc: parseFloat(l.discount_pct) || 0,
+      com: parseFloat(l.commission_pct) || 0
     }
   })
 
