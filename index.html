@@ -445,7 +445,23 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
 <!-- EXPENSE -->
 <div class="ov" id="mo-expense"><div class="modal"><div class="mh"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Add Expense</h3><button class="btn icon ghost" onclick="closeModal('mo-expense')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
 <div class="mb">
-  <div class="fr"><div class="fg"><label>Date *</label><input id="ex-date" type="date"></div><div class="fg"><label>Category</label><select id="ex-cat"><option>Rent</option><option>Salaries &amp; wages</option><option>Utilities</option><option>Transport</option><option>Marketing</option><option>Office supplies</option><option>Insurance</option><option>Maintenance</option><option>Professional fees</option><option>Bank charges</option><option>Other</option></select></div></div>
+  <div class="fr"><div class="fg"><label>Date *</label><input id="ex-date" type="date"></div><div class="fg"><label>Category</label><select id="ex-cat">
+  <option>Rent</option>
+  <option>Salaries &amp; wages</option>
+  <option>Utilities</option>
+  <option>Transport</option>
+  <option>Marketing</option>
+  <option>Office supplies</option>
+  <option>Insurance</option>
+  <option>Maintenance</option>
+  <option>Professional fees</option>
+  <option>Bank charges</option>
+  <option>Owner's Drawing</option>
+  <option>Dividends / Profit distribution</option>
+  <option>Partner withdrawal</option>
+  <option>Loan repayment</option>
+  <option>Other</option>
+</select></div></div>
   <div class="fg"><label>Description *</label><input id="ex-desc" placeholder="Brief description"></div>
   <div class="fg"><label>Payee</label><input id="ex-payee" placeholder="Who was paid"></div>
   <div class="fr"><div class="fg"><label>Currency</label><select id="ex-cur"></select></div><div class="fg"><label>Amount *</label><input id="ex-amt" type="number" placeholder="0.00" min="0"></div></div>
