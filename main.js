@@ -513,13 +513,17 @@ window.saveInvoice = async function() {
   }
 }
 window.delInvoice = async function(id) {
-  if(!confirm('Delete?'))return
+  if(!confirm('Delete this invoice? This cannot be undone.'))return
   const inv=invoices.find(i=>i.id===id); if(!inv)return
-  await sb.from('invoices').delete().eq('id',id)
+  // Delete lines first then invoice
+  const {error:le}=await sb.from('invoice_lines').delete().eq('invoice_id',id)
+  if(le) console.warn('Lines delete error:',le.message)
+  const {error}=await sb.from('invoices').delete().eq('id',id)
+  if(error) return toast('Delete failed: '+error.message,false)
   invoices=invoices.filter(i=>i.id!==id)
   const c=customers.find(x=>x.id===inv.customer_id)
   if(c){c.totalInvoiced-=inv.base_amount;if(inv.status==='paid')c.totalPaid-=inv.paid_amount;else c.balance-=inv.balance}
-  renderInvoices(); renderCustomers(); renderDash(); toast('Deleted'); updateBadges()
+  renderInvoices(); renderCustomers(); renderDash(); toast('Invoice deleted ✓'); updateBadges()
 }
 window.editInvoice = async function(id) {
   const inv = invoices.find(i=>i.id===id)
@@ -654,13 +658,17 @@ window.savePurchase = async function() {
   }
 }
 window.delPurchase = async function(id) {
-  if(!confirm('Delete?'))return
+  if(!confirm('Delete this purchase order? This cannot be undone.'))return
   const po=purchases.find(p=>p.id===id); if(!po)return
-  await sb.from('purchases').delete().eq('id',id)
+  // Delete lines first then PO
+  const {error:le}=await sb.from('purchase_lines').delete().eq('purchase_id',id)
+  if(le) console.warn('Lines delete error:',le.message)
+  const {error}=await sb.from('purchases').delete().eq('id',id)
+  if(error) return toast('Delete failed: '+error.message,false)
   purchases=purchases.filter(p=>p.id!==id)
   const s=suppliers.find(x=>x.id===po.supplier_id)
   if(s){s.totalPurchased-=po.base_amount;if(po.status==='paid')s.totalPaid-=po.paid_amount;else s.owed-=po.balance}
-  renderPurchases(); renderSuppliers(); renderDash(); toast('Deleted'); updateBadges()
+  renderPurchases(); renderSuppliers(); renderDash(); toast('Purchase deleted ✓'); updateBadges()
 }
 window.loadCustInv = function() {
   const cid=el('rc-cust').value; const s=el('rc-inv')
