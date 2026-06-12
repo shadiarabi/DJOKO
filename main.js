@@ -118,11 +118,11 @@ function renderInvLines() {
     html += '<option value="">Select product...</option>'
     products.forEach(p => { html += '<option value="'+p.id+'"'+(l.prod&&l.prod.id===p.id?' selected':'')+'>'+p.name+'</option>' })
     html += '</select></td>'
-    html += '<td style="padding:4px"><input id="inv-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="var v=parseFloat(this.value);if(!isNaN(v)){invLines['+i+'].qty=v;refreshInvLine('+i+')}" onchange="var v=parseFloat(this.value);if(!isNaN(v)&&v>0){invLines['+i+'].qty=v;refreshInvLine('+i+')}" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
-    html += '<td style="padding:4px"><input id="inv-price-'+i+'" type="number" value="'+(l.price||0)+'" min="0" step="0.01" oninput="var v=parseFloat(this.value);if(!isNaN(v)){invLines['+i+'].price=v;refreshInvLine('+i+')}" onchange="var v=parseFloat(this.value);if(!isNaN(v)){invLines['+i+'].price=v;refreshInvLine('+i+')}" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
-    html += '<td style="padding:4px"><input id="inv-disc-line-'+i+'" type="number" value="'+(l.disc||0)+'" min="0" max="100" step="1" oninput="var v=parseFloat(this.value)||0;invLines['+i+'].disc=v;refreshInvLine('+i+')" onchange="var v=parseFloat(this.value)||0;invLines['+i+'].disc=v;refreshInvLine('+i+')" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="inv-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="setInvQty('+i+',this.value)" onchange="setInvQty('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="inv-price-'+i+'" type="number" value="'+(l.price||0)+'" min="0" step="0.01" oninput="setInvPrice('+i+',this.value)" onchange="setInvPrice('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="inv-disc-line-'+i+'" type="number" value="'+(l.disc||0)+'" min="0" max="100" step="1" oninput="setInvDisc('+i+',this.value)" onchange="setInvDisc('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="inv-lt-'+i+'">'+fc(lt,cur)+'</td>'
-    html += '<td style="padding:4px 0"><button onclick="invLines.splice('+i+',1);renderInvLines()" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px" title="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
+    html += '<td style="padding:4px 0"><button onclick="rmInvLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px" title="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
     html += '</tr>'
   })
   html += '</tbody></table>'
@@ -153,10 +153,10 @@ function renderPoLines() {
     html += '<td style="padding:4px 4px 4px 0"><select id="po-prod-'+i+'" onchange="plProd('+i+',this.value)" style="width:100%;padding:5px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;background:var(--inp)"><option value="">Select product...</option>'
     products.forEach(p => { html += '<option value="'+p.id+'"'+(l.prod&&l.prod.id===p.id?' selected':'')+'>'+p.name+'</option>' })
     html += '</select></td>'
-    html += '<td style="padding:4px"><input id="po-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="var v=parseFloat(this.value);if(!isNaN(v)){poLines['+i+'].qty=v;refreshPoLine('+i+')}" onchange="var v=parseFloat(this.value);if(!isNaN(v)&&v>0){poLines['+i+'].qty=v;refreshPoLine('+i+')}" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
-    html += '<td style="padding:4px"><input id="po-cost-'+i+'" type="number" value="'+(l.cost||0)+'" min="0" step="0.01" oninput="var v=parseFloat(this.value);if(!isNaN(v)){poLines['+i+'].cost=v;refreshPoLine('+i+')}" onchange="var v=parseFloat(this.value);if(!isNaN(v)){poLines['+i+'].cost=v;refreshPoLine('+i+')}" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="po-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="setPoQty('+i+',this.value)" onchange="setPoQty('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
+    html += '<td style="padding:4px"><input id="po-cost-'+i+'" type="number" value="'+(l.cost||0)+'" min="0" step="0.01" oninput="setPoQost('+i+',this.value)" onchange="setPoQost('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="po-lt-'+i+'">'+fc(lt,cur)+'</td>'
-    html += '<td style="padding:4px 0"><button onclick="poLines.splice('+i+',1);renderPoLines()" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
+    html += '<td style="padding:4px 0"><button onclick="rmPoLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
     html += '</tr>'
   })
   html += '</tbody></table>'
@@ -171,6 +171,16 @@ window.refreshPoLine = function(i) {
   const e=el('po-lt-'+i); if(e) e.textContent=fc(lt,cur)
   calcPo()
 }
+
+// ── GLOBAL LINE UPDATE HELPERS ─────────────────────────────
+window.setInvQty = function(i,v){ invLines[i].qty=parseFloat(v)||0; refreshInvLine(i) }
+window.setInvPrice = function(i,v){ invLines[i].price=parseFloat(v)||0; refreshInvLine(i) }
+window.setInvDisc = function(i,v){ invLines[i].disc=parseFloat(v)||0; refreshInvLine(i) }
+window.setPoQty = function(i,v){ poLines[i].qty=parseFloat(v)||0; refreshPoLine(i) }
+window.setPoQost = function(i,v){ poLines[i].cost=parseFloat(v)||0; refreshPoLine(i) }
+window.rmInvLine = function(i){ invLines.splice(i,1); renderInvLines() }
+window.rmPoLine = function(i){ poLines.splice(i,1); renderPoLines() }
+
 
 
 
