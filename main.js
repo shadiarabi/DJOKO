@@ -28,6 +28,7 @@ const addD = (d,n) => { const dt=new Date(d); dt.setDate(dt.getDate()+n); return
 const el = id => document.getElementById(id)
 const erow = (n,m) => `<tr class="erow"><td colspan="${n}">${m}</td></tr>`
 const delBtn = fn => `<button class="btn icon ghost" onclick="${fn}" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;color:var(--red)"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>`
+const editBtn = fn => `<button class="btn icon ghost" onclick="${fn}" title="Edit" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
 
 function toast(msg, ok=true) {
   el('toast-msg').textContent = msg
@@ -157,6 +158,35 @@ window.delCust = async function(id) {
   await sb.from('customers').delete().eq('id',id)
   customers=customers.filter(c=>c.id!==id); renderCustomers(); toast('Deleted')
 }
+window.editCust = function(id) {
+  const c=customers.find(x=>x.id===id); if(!c)return
+  bcs('cl-cur',c.currency)
+  el('cl-name').value=c.name; el('cl-email').value=c.email||''; el('cl-phone').value=c.phone||''
+  el('cl-addr').value=c.address||''; el('cl-bal').value=c.opening_balance||0
+  el('mo-customer').classList.add('open')
+  el('mo-customer').dataset.editId=id
+  el('mo-customer').querySelector('.mf button:last-child').textContent='Update customer'
+  el('mo-customer').querySelector('.mh h3').lastChild.textContent=' Edit Customer'
+}
+window.saveCust = async function() {
+  const name=el('cl-name').value.trim(); if(!name)return alert('Name required')
+  const bal=parseFloat(el('cl-bal').value)||0
+  const editId=el('mo-customer').dataset.editId
+  const row={name,email:el('cl-email').value,phone:el('cl-phone').value,address:el('cl-addr').value,currency:el('cl-cur').value||baseCur,opening_balance:bal}
+  if(editId){
+    const {error}=await sb.from('customers').update(row).eq('id',editId)
+    if(error)return toast('Error: '+error.message,false)
+    const c=customers.find(x=>x.id===editId); if(c)Object.assign(c,row)
+    delete el('mo-customer').dataset.editId
+  } else {
+    const {data,error}=await sb.from('customers').insert(row).select().single()
+    if(error)return toast('Error: '+error.message,false)
+    customers.push({...data,totalInvoiced:bal,totalPaid:0,balance:bal})
+  }
+  renderCustomers(); renderDash(); closeModal('mo-customer'); saved(); toast(editId?'Customer updated':'Customer added')
+  ;['cl-name','cl-email','cl-phone','cl-addr','cl-bal'].forEach(id=>el(id).value='')
+  el('mo-customer').querySelector('.mf button:last-child').textContent='Save customer'
+}
 
 // ── SUPPLIERS ─────────────────────────────────────────────
 window.saveSupp = async function() {
@@ -173,17 +203,70 @@ window.delSupp = async function(id) {
   await sb.from('suppliers').delete().eq('id',id)
   suppliers=suppliers.filter(s=>s.id!==id); renderSuppliers(); toast('Deleted')
 }
-
-// ── PRODUCTS ──────────────────────────────────────────────
-window.saveStock = async function() {
-  const name=el('sk-name').value.trim(); if(!name)return alert('Name required')
-  const {data,error}=await sb.from('products').insert({code:el('sk-code').value||'PRD-'+(products.length+1).toString().padStart(3,'0'),name,category:el('sk-cat').value||'General',uom:el('sk-uom').value,qty:parseFloat(el('sk-qty').value)||0,reorder_level:parseFloat(el('sk-reorder').value)||10,cost_price:parseFloat(el('sk-cost').value)||0,sell_price:parseFloat(el('sk-price').value)||0}).select().single()
-  if(error)return toast('Error: '+error.message,false)
-  products.push(data); renderStock(); renderStockStats(); renderDash()
-  closeModal('mo-stock'); saved(); toast('Product added')
-  ;['sk-code','sk-name','sk-cat','sk-qty','sk-reorder','sk-cost','sk-price'].forEach(id=>el(id).value='')
+window.editSupp = function(id) {
+  const s=suppliers.find(x=>x.id===id); if(!s)return
+  bcs('su-cur',s.currency)
+  el('su-name').value=s.name; el('su-email').value=s.email||''; el('su-phone').value=s.phone||''
+  el('su-addr').value=s.address||''; el('su-bal').value=s.opening_balance||0
+  el('mo-supplier').classList.add('open')
+  el('mo-supplier').dataset.editId=id
+  el('mo-supplier').querySelector('.mf button:last-child').textContent='Update supplier'
+}
+window.saveSupp = async function() {
+  const name=el('su-name').value.trim(); if(!name)return alert('Name required')
+  const bal=parseFloat(el('su-bal').value)||0
+  const editId=el('mo-supplier').dataset.editId
+  const row={name,email:el('su-email').value,phone:el('su-phone').value,address:el('su-addr').value,currency:el('su-cur').value||baseCur,opening_balance:bal}
+  if(editId){
+    const {error}=await sb.from('suppliers').update(row).eq('id',editId)
+    if(error)return toast('Error: '+error.message,false)
+    const s=suppliers.find(x=>x.id===editId); if(s)Object.assign(s,row)
+    delete el('mo-supplier').dataset.editId
+  } else {
+    const {data,error}=await sb.from('suppliers').insert(row).select().single()
+    if(error)return toast('Error: '+error.message,false)
+    suppliers.push({...data,totalPurchased:bal,totalPaid:0,owed:bal})
+  }
+  renderSuppliers(); renderDash(); closeModal('mo-supplier'); saved(); toast(editId?'Supplier updated':'Supplier added')
+  ;['su-name','su-email','su-phone','su-addr','su-bal'].forEach(id=>el(id).value='')
+  el('mo-supplier').querySelector('.mf button:last-child').textContent='Save supplier'
 }
 
+// ── PRODUCTS ──────────────────────────────────────────────
+window.editStock = function(id) {
+  const p=products.find(x=>x.id===id); if(!p)return
+  el('sk-code').value=p.code; el('sk-name').value=p.name; el('sk-cat').value=p.category
+  el('sk-uom').value=p.uom; el('sk-qty').value=p.qty; el('sk-reorder').value=p.reorder_level
+  el('sk-cost').value=p.cost_price; el('sk-price').value=p.sell_price
+  el('mo-stock').classList.add('open')
+  el('mo-stock').dataset.editId=id
+  el('mo-stock').querySelector('.mf button:last-child').textContent='Update product'
+}
+window.saveStock = async function() {
+  const name=el('sk-name').value.trim(); if(!name)return alert('Name required')
+  const editId=el('mo-stock').dataset.editId
+  const row={code:el('sk-code').value||'PRD-'+(products.length+1).toString().padStart(3,'0'),name,category:el('sk-cat').value||'General',uom:el('sk-uom').value,qty:parseFloat(el('sk-qty').value)||0,reorder_level:parseFloat(el('sk-reorder').value)||10,cost_price:parseFloat(el('sk-cost').value)||0,sell_price:parseFloat(el('sk-price').value)||0}
+  if(editId){
+    const {error}=await sb.from('products').update(row).eq('id',editId)
+    if(error)return toast('Error: '+error.message,false)
+    const p=products.find(x=>x.id===editId); if(p)Object.assign(p,row)
+    delete el('mo-stock').dataset.editId
+  } else {
+    const {data,error}=await sb.from('products').insert(row).select().single()
+    if(error)return toast('Error: '+error.message,false)
+    products.push(data)
+  }
+  renderStock(); renderStockStats(); renderDash()
+  closeModal('mo-stock'); saved(); toast(editId?'Product updated':'Product added')
+  ;['sk-code','sk-name','sk-cat','sk-qty','sk-reorder','sk-cost','sk-price'].forEach(id=>el(id).value='')
+  el('mo-stock').querySelector('.mf button:last-child').textContent='Add product'
+}
+
+window.delStock = async function(id) {
+  if(!confirm('Delete product?'))return
+  await sb.from('products').delete().eq('id',id)
+  products=products.filter(p=>p.id!==id); renderStock(); renderStockStats(); renderDash(); toast('Deleted')
+}
 // ── INVOICES ──────────────────────────────────────────────
 window.saveInvoice = async function() {
   const cid=el('inv-cust').value; if(!cid)return alert('Select a customer')
@@ -217,6 +300,22 @@ window.delInvoice = async function(id) {
   if(c){c.totalInvoiced-=inv.base_amount;if(inv.status==='paid')c.totalPaid-=inv.paid_amount;else c.balance-=inv.balance}
   renderInvoices(); renderCustomers(); renderDash(); toast('Deleted'); updateBadges()
 }
+window.editInvoiceStatus = async function(id) {
+  const inv=invoices.find(i=>i.id===id); if(!inv)return
+  const newStatus=prompt('Change status:\npending / partial / paid', inv.status)
+  if(!newStatus||!['pending','partial','paid'].includes(newStatus))return
+  const oldStatus=inv.status
+  const cust=customers.find(c=>c.id===inv.customer_id)
+  const paid=newStatus==='paid'?inv.base_amount:newStatus==='partial'?inv.base_amount*0.5:0
+  const balance=inv.base_amount-paid
+  await sb.from('invoices').update({status:newStatus,paid_amount:paid,balance}).eq('id',id)
+  inv.status=newStatus; inv.paid_amount=paid; inv.balance=balance
+  if(cust){
+    if(oldStatus!=='paid'&&newStatus==='paid'){cust.totalPaid=(cust.totalPaid||0)+inv.base_amount;cust.balance=Math.max(0,(cust.balance||0)-inv.base_amount)}
+    else if(oldStatus==='paid'&&newStatus!=='paid'){cust.totalPaid=Math.max(0,(cust.totalPaid||0)-inv.base_amount);cust.balance=(cust.balance||0)+inv.base_amount}
+  }
+  renderInvoices(); renderCustomers(); renderDash(); saved(); toast('Invoice status updated to: '+newStatus); updateBadges()
+}
 window.fInv = function(s) { el('inv-tb').querySelectorAll('tr:not(.erow)').forEach(r=>r.style.display=(s==='all'||r.textContent.includes(s))?'':'none') }
 
 // ── PURCHASES ─────────────────────────────────────────────
@@ -248,6 +347,22 @@ window.delPurchase = async function(id) {
   const s=suppliers.find(x=>x.id===po.supplier_id)
   if(s){s.totalPurchased-=po.base_amount;if(po.status==='paid')s.totalPaid-=po.paid_amount;else s.owed-=po.balance}
   renderPurchases(); renderSuppliers(); renderDash(); toast('Deleted'); updateBadges()
+}
+window.editPurchaseStatus = async function(id) {
+  const po=purchases.find(p=>p.id===id); if(!po)return
+  const newStatus=prompt('Change status:\npending / partial / paid', po.status)
+  if(!newStatus||!['pending','partial','paid'].includes(newStatus))return
+  const oldStatus=po.status
+  const supp=suppliers.find(s=>s.id===po.supplier_id)
+  const paid=newStatus==='paid'?po.base_amount:newStatus==='partial'?po.base_amount*0.5:0
+  const balance=po.base_amount-paid
+  await sb.from('purchases').update({status:newStatus,paid_amount:paid,balance}).eq('id',id)
+  po.status=newStatus; po.paid_amount=paid; po.balance=balance
+  if(supp){
+    if(oldStatus!=='paid'&&newStatus==='paid'){supp.totalPaid=(supp.totalPaid||0)+po.base_amount;supp.owed=Math.max(0,(supp.owed||0)-po.base_amount)}
+    else if(oldStatus==='paid'&&newStatus!=='paid'){supp.totalPaid=Math.max(0,(supp.totalPaid||0)-po.base_amount);supp.owed=(supp.owed||0)+po.base_amount}
+  }
+  renderPurchases(); renderSuppliers(); renderDash(); saved(); toast('PO status updated to: '+newStatus); updateBadges()
 }
 
 // ── RECEIPTS ──────────────────────────────────────────────
@@ -315,6 +430,35 @@ window.delExpense = async function(id) {
   await sb.from('expenses').delete().eq('id',id)
   expenses=expenses.filter(e=>e.id!==id); renderExpenses(); renderDash(); toast('Deleted')
 }
+window.editExpense = function(id) {
+  const e=expenses.find(x=>x.id===id); if(!e)return
+  bcs('ex-cur',e.currency)
+  el('ex-date').value=e.date; el('ex-cat').value=e.category
+  el('ex-desc').value=e.description; el('ex-payee').value=e.payee||''; el('ex-amt').value=e.amount
+  el('mo-expense').classList.add('open')
+  el('mo-expense').dataset.editId=id
+  el('mo-expense').querySelector('.mf button:last-child').textContent='Update expense'
+}
+window.saveExpense = async function() {
+  const desc=el('ex-desc').value.trim(); if(!desc)return alert('Description required')
+  const amt=parseFloat(el('ex-amt').value)||0
+  const cur=el('ex-cur').value||baseCur
+  const editId=el('mo-expense').dataset.editId
+  const row={date:el('ex-date').value,category:el('ex-cat').value,description:desc,payee:el('ex-payee').value,currency:cur,amount:amt,base_amount:toBase(amt,cur)}
+  if(editId){
+    const {error}=await sb.from('expenses').update(row).eq('id',editId)
+    if(error)return toast('Error: '+error.message,false)
+    const e=expenses.find(x=>x.id===editId); if(e)Object.assign(e,row)
+    delete el('mo-expense').dataset.editId
+  } else {
+    const {data,error}=await sb.from('expenses').insert(row).select().single()
+    if(error)return toast('Error: '+error.message,false)
+    expenses.unshift(data)
+  }
+  renderExpenses(); renderDash(); closeModal('mo-expense'); saved(); toast(editId?'Expense updated':'Expense saved')
+  ;['ex-desc','ex-payee','ex-amt'].forEach(id=>el(id).value='')
+  el('mo-expense').querySelector('.mf button:last-child').textContent='Save expense'
+}
 
 // ── RENDER FUNCTIONS ──────────────────────────────────────
 function renderCustomers() {
@@ -327,7 +471,7 @@ function renderCustomers() {
     <td>${fmt(c.totalInvoiced||0)}</td><td style="color:var(--grn)">${fmt(c.totalPaid||0)}</td>
     <td style="color:${(c.balance||0)>0?'var(--red)':'var(--grn)'};font-weight:700">${fmt(c.balance||0)}</td>
     <td>${(c.balance||0)>0?sbadge('pending'):sbadge('paid')}</td>
-    <td>${delBtn(`delCust('${c.id}')`)}</td></tr>`).join('')
+    <td style="white-space:nowrap">${editBtn(`editCust('${c.id}')`)} ${delBtn(`delCust('${c.id}')`)}</td></tr>`).join('')
 }
 function renderSuppliers() {
   const tb=el('supp-tb')
@@ -339,7 +483,7 @@ function renderSuppliers() {
     <td>${fmt(s.totalPurchased||0)}</td><td style="color:var(--grn)">${fmt(s.totalPaid||0)}</td>
     <td style="color:${(s.owed||0)>0?'var(--red)':'var(--grn)'};font-weight:700">${fmt(s.owed||0)}</td>
     <td>${(s.owed||0)>0?sbadge('pending'):sbadge('paid')}</td>
-    <td>${delBtn(`delSupp('${s.id}')`)}</td></tr>`).join('')
+    <td style="white-space:nowrap">${editBtn(`editSupp('${s.id}')`)} ${delBtn(`delSupp('${s.id}')`)}</td></tr>`).join('')
 }
 function renderStock() {
   const tb=el('stock-tb')
@@ -354,7 +498,7 @@ function renderStock() {
       <td>${fmt(p.cost_price)}</td><td>${fmt(p.sell_price)}</td>
       <td style="font-weight:700">${fmt(p.qty*p.cost_price)}</td>
       <td style="color:${m>=30?'var(--grn)':m>=10?'var(--org)':'var(--red)'};font-weight:700">${m}%</td>
-      <td>${skb(p.qty,p.reorder_level)}</td></tr>`}).join('')
+      <td>${skb(p.qty,p.reorder_level)}</td><td style="white-space:nowrap">${editBtn(`editStock('${p.id}')`)} ${delBtn(`delStock('${p.id}')`)}</td></tr>`}).join('')
 }
 function renderStockStats() {
   el('sk-n').textContent=products.length
@@ -378,6 +522,7 @@ function renderInvoices() {
       <button class="btn sm" onclick="printInvoice('${inv.id}')" title="Print">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
       </button>
+      <button class="btn icon ghost" onclick="editInvoiceStatus('${inv.id}')" title="Edit status" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       ${delBtn(`delInvoice('${inv.id}')`)}
     </td></tr>`).join('')
 }
@@ -392,7 +537,7 @@ function renderPurchases() {
     <td style="color:var(--grn)">${fmt(po.paid_amount||0)}</td>
     <td style="color:${(po.balance||0)>0?'var(--red)':'var(--grn)'};font-weight:700">${fmt(po.balance||0)}</td>
     <td>${sbadge(po.status)}</td>
-    <td>${delBtn(`delPurchase('${po.id}')`)}</td></tr>`).join('')
+    <td style="white-space:nowrap"><button class="btn icon ghost" onclick="editPurchaseStatus('${po.id}')" title="Edit status" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button> ${delBtn(`delPurchase('${po.id}')`)}</td></tr>`).join('')
 }
 function renderReceipts() {
   const tb=el('rcpt-tb')
@@ -427,7 +572,7 @@ function renderExpenses() {
     <td>${e.description}</td><td>${e.payee||'—'}</td>
     <td><span class="badge bcur">${e.currency}</span></td>
     <td style="color:var(--red);font-weight:700">${fc(e.amount,e.currency)}</td>
-    <td>${delBtn(`delExpense('${e.id}')`)}</td></tr>`).join('')
+    <td style="white-space:nowrap">${editBtn(`editExpense('${e.id}')`)} ${delBtn(`delExpense('${e.id}')`)}</td></tr>`).join('')
 }
 function renderDash() {
   el('dash-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})
