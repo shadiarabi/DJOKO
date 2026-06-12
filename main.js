@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
-const SURL = import.meta.env.VITE_SUPABASE_URL
-const SKEY = import.meta.env.VITE_SUPABASE_ANON_KEY
+const SURL = 'https://nlhllkpuqvtllpiginyn.supabase.co'
+const SKEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5saGxsa3B1cXZ0bGxwaWdpbnluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDk5NjAsImV4cCI6MjA5NjY4NTk2MH0.eoUxK5D2oF-ybpnpktw7vHjS0_1aWPVyPuoEKfQXw7M'
 const sb = createClient(SURL, SKEY)
 
 // ── CURRENCIES & RATES ────────────────────────────────────
