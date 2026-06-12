@@ -361,10 +361,22 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
   <div class="fsec">Line items</div>
   <div id="inv-lines"></div>
   <button class="btn" onclick="addInvLine()" style="width:100%;justify-content:center;margin-bottom:10px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add line</button>
-  <div style="background:#F9FAFB;border:1px solid var(--bdr);border-radius:6px;padding:10px">
-    <div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px"><span style="color:var(--tx2)">Subtotal:</span><span id="inv-sub">—</span></div>
-    <div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px;align-items:center"><span style="color:var(--tx2)">Discount:</span><span><input id="inv-disc" type="number" placeholder="0" min="0" max="100" oninput="calcInv()" style="width:55px;padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px"> %</span></div>
-    <div style="display:flex;justify-content:space-between;font-weight:700;font-size:14px;padding-top:7px;border-top:1px solid var(--bdr)"><span>Total:</span><span id="inv-total" style="color:var(--acc)">—</span></div>
+  <div style="background:#F9FAFB;border:1px solid var(--bdr);border-radius:6px;padding:12px">
+    <div style="display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px">
+      <span style="color:var(--tx2)">Subtotal (before discount):</span>
+      <span id="inv-sub" style="font-weight:500">—</span>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:7px;font-size:12px;align-items:center">
+      <span style="color:var(--tx2)">Invoice discount:</span>
+      <span style="display:flex;align-items:center;gap:6px">
+        <span id="inv-disc-amt" style="color:var(--red);font-size:11px"></span>
+        <input id="inv-disc" type="number" placeholder="0" min="0" max="100" step="0.1" oninput="calcInv()" style="width:60px;padding:4px 7px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center"> %
+      </span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;padding-top:9px;border-top:2px solid var(--bdr);margin-top:2px">
+      <span>TOTAL:</span>
+      <span id="inv-total" style="color:var(--acc);font-size:16px">—</span>
+    </div>
   </div>
   <div class="fg" style="margin-top:10px"><label>Status</label><select id="inv-status"><option value="pending">Pending</option><option value="partial">Partial</option><option value="paid">Paid</option></select></div>
   <div class="fg"><label>Notes / Terms</label><textarea id="inv-notes" rows="2" placeholder="Payment terms, bank details…"></textarea></div>
