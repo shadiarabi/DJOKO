@@ -870,7 +870,13 @@ function renderPurchases() {
     <td style="color:var(--grn)">${fmt(po.paid_amount||0)}</td>
     <td style="color:${(po.balance||0)>0?'var(--red)':'var(--grn)'};font-weight:700">${fmt(po.balance||0)}</td>
     <td>${sbadge(po.status)}</td>
-    <td style="white-space:nowrap"><button class="btn icon ghost" onclick="editPurchase('${po.id}')" title="Edit status" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button> ${delBtn(`delPurchase('${po.id}')`)}</td></tr>`).join('')
+    <td style="white-space:nowrap">
+      <button class="btn sm" onclick="printPurchase('${po.id}')" title="Print PO" style="padding:4px 7px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      </button>
+      <button class="btn icon ghost" onclick="editPurchase('${po.id}')" title="Edit" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+      ${delBtn(`delPurchase('${po.id}')`)}
+    </td></tr>`).join('')
 }
 function renderReceipts() {
   const tb=el('rcpt-tb')
@@ -1004,8 +1010,9 @@ window.printInvoice = async function(id) {
   doc.setTextColor(255,255,255); doc.setFontSize(18); doc.setFont('helvetica','bold')
   doc.text(settings.company||'DJOKO',mg,13)
   doc.setFontSize(8); doc.setFont('helvetica','normal')
-  if(settings.address) doc.text(settings.address,mg,18)
-  if(settings.phone||settings.email) doc.text((settings.phone||'')+' '+(settings.email||''),mg,22)
+  if(settings.address && settings.address!=='null') doc.text(settings.address,mg,18)
+  const contactLine = [settings.phone,settings.email].filter(x=>x&&x!=='null').join('  ')
+  if(contactLine) doc.text(contactLine,mg,22)
   doc.setFontSize(16); doc.setFont('helvetica','bold')
   doc.text('INVOICE',W-mg,12,{align:'right'})
   doc.setFontSize(8); doc.setFont('helvetica','normal')
@@ -1082,16 +1089,25 @@ window.printInvoice = async function(id) {
     doc.text('R$'+totalCom.toFixed(2),bx+bw-3,sy,{align:'right'})
     sy+=6
   }
-  doc.setFillColor(37,99,235); doc.rect(bx,sy,bw,10,'F')
-  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(9)
-  doc.text('TOTAL '+inv.currency,bx+3,sy+7)
-  doc.text(fc(inv.total,inv.currency),bx+bw-3,sy+7,{align:'right'})
-  sy+=12
-  // USD line
+  doc.setFillColor(37,99,235); doc.rect(bx,sy,bw,11,'F')
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(10)
+  doc.text('TOTAL '+inv.currency,bx+3,sy+7.5)
+  doc.setFontSize(11)
+  doc.text(fc(inv.total,inv.currency),bx+bw-3,sy+7.5,{align:'right'})
+  sy+=13
+  // USD equivalent box - prominent display
   if(inv.taxa && inv.currency==='BRL'){
-    const usd=inv.total/inv.taxa
-    doc.setTextColor(37,99,235); doc.setFont('helvetica','normal'); doc.setFontSize(7.5)
-    doc.text('USD (1$=R$'+inv.taxa+'): $'+usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}),bx+bw-3,sy+4,{align:'right'})
+    const usd = inv.total / inv.taxa
+    const ux = bx, uw = bw
+    doc.setFillColor(239,246,255); doc.rect(ux,sy+2,uw,12,'F')
+    doc.setDrawColor(147,197,253); doc.rect(ux,sy+2,uw,12)
+    doc.setTextColor(37,99,235); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+    doc.text('TOTAL USD',ux+3,sy+9)
+    doc.setFontSize(11)
+    doc.text('$'+usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}),ux+uw-3,sy+9,{align:'right'})
+    doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(100,116,139)
+    doc.text('Rate: $1 = R$'+inv.taxa,ux+3,sy+13)
+    sy+=14
   }
   // Notes
   if(inv.notes){
@@ -1168,6 +1184,85 @@ window.printReport = function() {
   doc.text('DJOKO Pro Accounting | '+new Date().toLocaleDateString(),W/2,287,{align:'center'})
   doc.save('DJOKO-Report-'+new Date().toISOString().slice(0,10)+'.pdf')
   toast('Report PDF saved! ✓')
+}
+
+window.printPurchase = async function(id) {
+  const po = purchases.find(p=>p.id===id); if(!po)return
+  const {data:lines} = await sb.from('purchase_lines').select('*').eq('purchase_id',id)
+  toast('Generating PDF...')
+  const doc = new jsPDF({orientation:'portrait',unit:'mm',format:'a4'})
+  const W=210, mg=14
+  let y=mg
+  // Header bar
+  doc.setFillColor(217,119,6); doc.rect(0,0,W,26,'F')
+  doc.setTextColor(255,255,255); doc.setFontSize(18); doc.setFont('helvetica','bold')
+  doc.text(settings.company||'DJOKO',mg,13)
+  doc.setFontSize(8); doc.setFont('helvetica','normal')
+  const addr = settings.address&&settings.address!=='null'?settings.address:''
+  const contact = [settings.phone,settings.email].filter(x=>x&&x!=='null').join('  ')
+  if(addr) doc.text(addr,mg,18)
+  if(contact) doc.text(contact,mg,22)
+  doc.setFontSize(16); doc.setFont('helvetica','bold')
+  doc.text('PURCHASE ORDER',W-mg,12,{align:'right'})
+  doc.setFontSize(8); doc.setFont('helvetica','normal')
+  doc.text(po.number,W-mg,17,{align:'right'})
+  doc.text('Date: '+po.date,W-mg,21,{align:'right'})
+  if(po.delivery_date) doc.text('Delivery: '+po.delivery_date,W-mg,25,{align:'right'})
+  y=34
+  // Supplier box
+  doc.setTextColor(0,0,0); doc.setFillColor(255,251,235)
+  doc.rect(mg,y,W-mg*2,16,'F')
+  doc.setFontSize(7); doc.setFont('helvetica','bold'); doc.setTextColor(156,163,175)
+  doc.text('SUPPLIER',mg+3,y+6)
+  doc.setTextColor(0,0,0); doc.setFontSize(11); doc.setFont('helvetica','bold')
+  doc.text(po.supplier_name||'',mg+3,y+13)
+  const sc=po.status==='paid'?[22,163,74]:po.status==='partial'?[37,99,235]:[217,119,6]
+  doc.setTextColor(...sc); doc.setFontSize(9)
+  doc.text(po.status.toUpperCase(),W-mg-3,y+10,{align:'right'})
+  y+=22
+  // Table header
+  doc.setFillColor(92,61,3); doc.rect(mg,y,W-mg*2,7,'F')
+  doc.setTextColor(255,255,255); doc.setFontSize(7); doc.setFont('helvetica','bold')
+  doc.text('PRODUCT',mg+2,y+5)
+  doc.text('QTY',mg+100,y+5,{align:'center'})
+  doc.text('UNIT COST',mg+145,y+5,{align:'right'})
+  doc.text('LINE TOTAL',W-mg-2,y+5,{align:'right'})
+  y+=8
+  // Rows
+  let totalQty=0, grandTotal=0
+  doc.setFont('helvetica','normal'); doc.setFontSize(7.5)
+  ;(lines||[]).forEach((l,idx)=>{
+    if(y>270){doc.addPage();y=15}
+    doc.setFillColor(idx%2===0?255:255,idx%2===0?255:251,idx%2===0?255:235)
+    doc.rect(mg,y-1,W-mg*2,8,'F')
+    doc.setTextColor(0,0,0)
+    doc.text((l.product_name||'').substring(0,45),mg+2,y+4.5)
+    doc.text(String(l.qty||0),mg+100,y+4.5,{align:'center'})
+    doc.text(fc(l.unit_cost||0,po.currency),mg+145,y+4.5,{align:'right'})
+    const lt=(parseFloat(l.qty)||0)*(parseFloat(l.unit_cost)||0)
+    doc.text(fc(lt,po.currency),W-mg-2,y+4.5,{align:'right'})
+    doc.setDrawColor(229,231,235); doc.line(mg,y+7,W-mg,y+7)
+    totalQty+=parseFloat(l.qty)||0; grandTotal+=lt
+    y+=8
+  })
+  // Totals row
+  doc.setFillColor(255,251,235); doc.rect(mg,y,W-mg*2,8,'F')
+  doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(0,0,0)
+  doc.text('TOTAL: '+totalQty+' units',mg+2,y+5.5)
+  doc.setFillColor(217,119,6); doc.rect(W-mg-62,y,60,8,'F')
+  doc.setTextColor(255,255,255); doc.setFontSize(9)
+  doc.text('TOTAL '+po.currency,W-mg-60,y+5.5)
+  doc.text(fc(grandTotal,po.currency),W-mg-2,y+5.5,{align:'right'})
+  y+=16
+  // Paid/Balance
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(107,114,128)
+  doc.text('Paid: '+fmt(po.paid_amount||0),W-mg-62,y)
+  doc.text('Balance: '+fmt(po.balance||0),W-mg-30,y)
+  // Footer
+  doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(156,163,175)
+  doc.text('Generated by DJOKO Pro Accounting | '+new Date().toLocaleDateString(),W/2,287,{align:'center'})
+  doc.save('PO-'+po.number+'.pdf')
+  toast('Purchase order PDF saved! ✓')
 }
 
 window.exportCSV = function() {
