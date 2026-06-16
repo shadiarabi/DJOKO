@@ -672,18 +672,38 @@ window.savePurchase = async function() {
     const {data:po,error}=await sb.from('purchases').insert({number:poNumber,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save PO';return toast('Error: '+error.message,false)}
     await sb.from('purchase_lines').insert(poLines.map(l=>({purchase_id:po.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:parseFloat(l.qty)||0,unit_cost:parseFloat(l.cost)||0,line_total:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0)})))
-    // Update stock - fetch current qty from DB first to avoid stale data
-    for(const l of valid){
-      const addQty = parseFloat(l.qty)||0
-      const newCost = parseFloat(l.cost)||0
-      // Get fresh qty from DB
-      const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
-      const currentQty = freshProd ? (parseFloat(freshProd.qty)||0) : (parseFloat(l.prod.qty)||0)
-      const newQty = currentQty + addQty
-      const {error:se} = await sb.from('products').update({qty:newQty, cost_price:newCost}).eq('id',l.prod.id)
-      if(se) toast('Stock update warning: '+se.message, false)
-      const p=products.find(x=>x.id===l.prod.id)
-      if(p){p.qty=newQty; p.cost_price=newCost}
+    // Update stock using the saved purchase_lines from DB (most reliable)
+    const {data:savedLines} = await sb.from('purchase_lines').select('*').eq('purchase_id', po.id)
+    if(savedLines && savedLines.length > 0) {
+      for(const sl of savedLines) {
+        if(!sl.product_id) continue
+        const addQty = parseFloat(sl.qty)||0
+        const newCost = parseFloat(sl.unit_cost)||0
+        // Get fresh qty from DB
+        const {data:freshProd} = await sb.from('products').select('qty,name').eq('id',sl.product_id).single()
+        const currentQty = freshProd ? (parseFloat(freshProd.qty)||0) : 0
+        const newQty = currentQty + addQty
+        console.log('Stock:', freshProd?.name, currentQty, '+', addQty, '=', newQty)
+        const {error:se} = await sb.from('products').update({qty:newQty, cost_price:newCost}).eq('id',sl.product_id)
+        if(se) { console.error('Stock FAILED:', se.message); toast('Stock update failed: '+se.message, false) }
+        // Update in memory
+        const p = products.find(x=>x.id===sl.product_id)
+        if(p){p.qty=newQty; p.cost_price=newCost}
+      }
+    } else {
+      // Fallback: use poLines
+      for(const l of valid){
+        if(!l.prod?.id) continue
+        const addQty = parseFloat(l.qty)||0
+        const newCost = parseFloat(l.cost)||0
+        const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
+        const currentQty = freshProd ? (parseFloat(freshProd.qty)||0) : 0
+        const newQty = currentQty + addQty
+        const {error:se} = await sb.from('products').update({qty:newQty, cost_price:newCost}).eq('id',l.prod.id)
+        if(se) toast('Stock update failed: '+se.message, false)
+        const p=products.find(x=>x.id===l.prod.id)
+        if(p){p.qty=newQty; p.cost_price=newCost}
+      }
     }
     purchases.unshift(po)
     if(supp){supp.totalPurchased=(supp.totalPurchased||0)+baseAmt;if(status==='paid')supp.totalPaid=(supp.totalPaid||0)+baseAmt;else supp.owed=(supp.owed||0)+baseAmt}
