@@ -78,7 +78,10 @@ window.openModal = function(id) {
   if(id==='mo-supplier') bcs('su-cur')
   if(id==='mo-stock') el('sk-code').value='PRD-'+(products.length+1).toString().padStart(3,'0')
   if(id==='mo-invoice'){
-    bcs('inv-cur','BRL');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30);if(el('inv-taxa'))el('inv-taxa').value='5.50'
+    bcs('inv-cur','BRL');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30)
+    // Use last saved taxa rate, not hardcoded 5.50
+    const lastTaxa = (() => { try { return localStorage.getItem('djoko_last_taxa') } catch(e){ return null } })()
+    if(el('inv-taxa')) el('inv-taxa').value = lastTaxa || '5.50'
     // Generate unique invoice number using count + timestamp suffix
     const invCount = (invoices.length+1).toString().padStart(3,'0')
     el('inv-num').value=(settings.invoice_prefix||'INV-')+invCount
@@ -478,6 +481,8 @@ window.saveInvoice = async function() {
     const oldStatus=el('mo-invoice').dataset.editOldStatus
     const oldBaseAmt=parseFloat(el('mo-invoice').dataset.editBaseAmt)||0
     const taxaVal = parseFloat(el('inv-taxa')?.value) || 5.50
+    // Remember this rate for next time
+    try { localStorage.setItem('djoko_last_taxa', taxaVal) } catch(e){}
     const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:taxaVal}
     const {error}=await sb.from('invoices').update(invData).eq('id',editId)
     if(error){btn.disabled=false;btn.textContent='Update invoice';return toast('Error: '+error.message,false)}
@@ -512,6 +517,8 @@ window.saveInvoice = async function() {
       el('inv-num').value = invNumber
     }
     const taxaVal = parseFloat(el('inv-taxa')?.value) || 5.50
+    // Remember this rate for next time
+    try { localStorage.setItem('djoko_last_taxa', taxaVal) } catch(e){}
     const {data:inv,error}=await sb.from('invoices').insert({number:invNumber,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:taxaVal}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
     await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
@@ -556,9 +563,12 @@ window.editInvoice = async function(id) {
   // Fill in header fields
   bcs('inv-cur', inv.currency||'BRL')
   // Set default taxa
-  // Load the SAVED taxa rate - this is the key fix!
-  if(el('inv-taxa')) el('inv-taxa').value = (inv.taxa && inv.taxa > 0) ? inv.taxa : 5.50
-  calcInv()
+  // Load the SAVED taxa rate from the invoice record
+  const savedTaxa = (inv.taxa && parseFloat(inv.taxa) > 0) ? parseFloat(inv.taxa) : null
+  const fallbackTaxa = (() => { try { return parseFloat(localStorage.getItem('djoko_last_taxa')) || 5.50 } catch(e){ return 5.50 } })()
+  if(el('inv-taxa')) el('inv-taxa').value = savedTaxa || fallbackTaxa
+  // Small delay to ensure DOM is ready before calculating
+  setTimeout(() => calcInv(), 50)
   el('inv-date').value = inv.date || ''
   el('inv-due').value = inv.due_date || ''
   el('inv-num').value = inv.number || ''
