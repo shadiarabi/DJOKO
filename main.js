@@ -515,7 +515,16 @@ window.saveInvoice = async function() {
     const {data:inv,error}=await sb.from('invoices').insert({number:invNumber,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:taxaVal}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
     await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
-    for(const l of valid){await sb.from('products').update({qty:Math.max(0,(l.prod.qty||0)-l.qty)}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p)p.qty=Math.max(0,p.qty-l.qty)}
+    for(const l of valid){
+    const subQty = parseFloat(l.qty)||0
+    const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
+    const currentQty = freshProd ? (parseFloat(freshProd.qty)||0) : (parseFloat(l.prod.qty)||0)
+    const newQty = Math.max(0, currentQty - subQty)
+    const {error:se} = await sb.from('products').update({qty:newQty}).eq('id',l.prod.id)
+    if(se) toast('Stock update warning: '+se.message, false)
+    const p=products.find(x=>x.id===l.prod.id)
+    if(p) p.qty=newQty
+  }
     invoices.unshift(inv)
     if(cust){cust.totalInvoiced=(cust.totalInvoiced||0)+baseAmt;if(status==='paid')cust.totalPaid=(cust.totalPaid||0)+baseAmt;else cust.balance=(cust.balance||0)+baseAmt}
     btn.disabled=false; btn.textContent='Save invoice'
@@ -663,7 +672,19 @@ window.savePurchase = async function() {
     const {data:po,error}=await sb.from('purchases').insert({number:poNumber,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save PO';return toast('Error: '+error.message,false)}
     await sb.from('purchase_lines').insert(poLines.map(l=>({purchase_id:po.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:parseFloat(l.qty)||0,unit_cost:parseFloat(l.cost)||0,line_total:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0)})))
-    for(const l of valid){await sb.from('products').update({qty:(l.prod.qty||0)+parseFloat(l.qty),cost_price:parseFloat(l.cost)||0}).eq('id',l.prod.id);const p=products.find(x=>x.id===l.prod.id);if(p){p.qty+=parseFloat(l.qty);p.cost_price=parseFloat(l.cost)||0}}
+    // Update stock - fetch current qty from DB first to avoid stale data
+    for(const l of valid){
+      const addQty = parseFloat(l.qty)||0
+      const newCost = parseFloat(l.cost)||0
+      // Get fresh qty from DB
+      const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
+      const currentQty = freshProd ? (parseFloat(freshProd.qty)||0) : (parseFloat(l.prod.qty)||0)
+      const newQty = currentQty + addQty
+      const {error:se} = await sb.from('products').update({qty:newQty, cost_price:newCost}).eq('id',l.prod.id)
+      if(se) toast('Stock update warning: '+se.message, false)
+      const p=products.find(x=>x.id===l.prod.id)
+      if(p){p.qty=newQty; p.cost_price=newCost}
+    }
     purchases.unshift(po)
     if(supp){supp.totalPurchased=(supp.totalPurchased||0)+baseAmt;if(status==='paid')supp.totalPaid=(supp.totalPaid||0)+baseAmt;else supp.owed=(supp.owed||0)+baseAmt}
     btn.disabled=false; btn.textContent='Save PO'
