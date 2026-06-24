@@ -118,7 +118,7 @@ window.closeModal = function(id) {
   delete el(id).dataset.editOldStatus
   delete el(id).dataset.editBaseAmt
 }
-document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}))
+document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeModal(o.id)}))
 window.changeCurrency = function() { baseCur=el('base-currency').value; renderAll() }
 
 // ── INVOICE LINES ─────────────────────────────────────────
@@ -525,7 +525,7 @@ window.saveInvoice = async function() {
     btn.disabled=false; btn.textContent='Save invoice'
     el('mo-invoice').querySelector('.mh h3').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> New Sales Invoice'
     renderInvoices(); renderCustomers(); renderStock(); renderDash()
-    closeModal('mo-invoice'); saved(); toast('Invoice updated!'); updateBadges()
+    closeModal('mo-invoice'); saved(); toast('✓ Invoice '+invData.number+' updated — confirmed', true); updateBadges()
   } else {
     // ── CREATE NEW INVOICE ──
     // Make sure number is unique (skip check if editing same invoice)
@@ -555,7 +555,7 @@ window.saveInvoice = async function() {
     if(cust){cust.totalInvoiced=(cust.totalInvoiced||0)+baseAmt;if(status==='paid')cust.totalPaid=(cust.totalPaid||0)+baseAmt;else cust.balance=(cust.balance||0)+baseAmt}
     btn.disabled=false; btn.textContent='Save invoice'
     renderInvoices(); renderCustomers(); renderStock(); renderDash()
-    closeModal('mo-invoice'); saved(); toast('Invoice saved!'); updateBadges()
+    closeModal('mo-invoice'); saved(); toast('✓ Invoice '+inv.number+' saved — confirmed in database', true); updateBadges()
   }
 }
 window.delInvoice = async function(id) {
@@ -688,7 +688,7 @@ window.savePurchase = async function() {
     const h3=el('mo-purchase').querySelector('.mh h3')
     if(h3) h3.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg> New Purchase Order'
     renderPurchases(); renderSuppliers(); renderStock(); renderDash()
-    closeModal('mo-purchase'); saved(); toast('Purchase order updated! ✓'); updateBadges()
+    closeModal('mo-purchase'); saved(); toast('✓ Purchase '+poData.number+' updated — confirmed', true); updateBadges()
 
   } else {
     // ── CREATE NEW PO ──
