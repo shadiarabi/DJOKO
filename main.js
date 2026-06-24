@@ -505,9 +505,27 @@ window.saveInvoice = async function() {
     const invData={number:el('inv-num').value,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:taxaVal}
     const {error}=await sb.from('invoices').update(invData).eq('id',editId)
     if(error){btn.disabled=false;btn.textContent='Update invoice';return toast('Error: '+error.message,false)}
+    // Capture OLD line quantities BEFORE deleting (needed to correctly restore/adjust stock)
+    const {data:oldInvLinesBeforeDelete} = await sb.from('invoice_lines').select('product_id,qty').eq('invoice_id',editId)
+    const oldInvQtyMap = {}
+    ;(oldInvLinesBeforeDelete||[]).forEach(ol=>{ oldInvQtyMap[ol.product_id] = (oldInvQtyMap[ol.product_id]||0) + (parseFloat(ol.qty)||0) })
     // Replace lines
     await sb.from('invoice_lines').delete().eq('invoice_id',editId)
     await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
+    // Adjust stock: restore old sold qty, then deduct new sold qty
+    for(const l of valid){
+      if(!l.prod?.id) continue
+      const newSoldQty = parseFloat(l.qty)||0
+      const oldSoldQty = oldInvQtyMap[l.prod.id] || 0
+      const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
+      const currentQty = freshProd ? (parseFloat(freshProd.qty)||0) : 0
+      // Add back what was previously sold, then subtract the new sold amount
+      const newQty = Math.max(0, currentQty + oldSoldQty - newSoldQty)
+      const {error:se} = await sb.from('products').update({qty:newQty}).eq('id',l.prod.id)
+      if(se) { console.error('Stock update FAILED:', se.message); toast('⚠️ Stock update failed: '+se.message, false) }
+      const p=products.find(x=>x.id===l.prod.id)
+      if(p) p.qty=newQty
+    }
     // Update invoice in memory
     Object.assign(oldInv,invData)
     // Fix customer balance: reverse old, apply new
@@ -660,14 +678,34 @@ window.savePurchase = async function() {
     const poData={number:el('po-num').value,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}
     const {error}=await sb.from('purchases').update(poData).eq('id',editId)
     if(error){btn.disabled=false;btn.textContent='Update PO';return toast('Error: '+error.message,false)}
+    // Capture OLD line quantities BEFORE deleting (needed to correctly adjust stock)
+    const {data:oldLinesBeforeDelete} = await sb.from('purchase_lines').select('product_id,qty').eq('purchase_id',editId)
+    const oldQtyMap = {}
+    ;(oldLinesBeforeDelete||[]).forEach(ol=>{ oldQtyMap[ol.product_id] = (oldQtyMap[ol.product_id]||0) + (parseFloat(ol.qty)||0) })
+    if(oldPo) oldPo._lineQtyMap = oldQtyMap
     // Replace lines
     await sb.from('purchase_lines').delete().eq('purchase_id',editId)
     await sb.from('purchase_lines').insert(poLines.map(l=>({purchase_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:parseFloat(l.qty)||0,unit_cost:parseFloat(l.cost)||0,line_total:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0)})))
-    // Update stock cost prices
+    // Update stock: when EDITING a PO, we must reverse the OLD quantities first,
+    // then apply the NEW quantities — otherwise qty is never actually added!
+    // Step A: reverse old quantities (subtract what this PO originally added)
+    const {data:oldLines} = await sb.from('purchase_lines').select('product_id,qty').eq('purchase_id', editId)
+    // Note: oldLines was already deleted above, so fetch from poLines snapshot instead if needed.
+    // Step B: apply new quantities by computing the DELTA between old and new line qty per product
+    // Simplify: fetch fresh qty, then add the FULL new qty and subtract the FULL old qty that we captured before delete.
     for(const l of valid){
+      const addQty = parseFloat(l.qty)||0
+      const newCost = parseFloat(l.cost)||0
+      // Get current qty fresh from DB
+      const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
+      const currentQty = freshProd ? (parseFloat(freshProd.qty)||0) : 0
+      // Find this product's OLD qty in this same PO (before edit) to avoid double counting
+      const oldLineQty = (oldPo && oldPo._lineQtyMap && oldPo._lineQtyMap[l.prod.id]) || 0
+      const newQty = currentQty - oldLineQty + addQty
+      const {error:se} = await sb.from('products').update({qty:newQty, cost_price:newCost}).eq('id',l.prod.id)
+      if(se) { console.error('Stock update FAILED:', se.message); toast('⚠️ Stock update failed: '+se.message, false) }
       const p=products.find(x=>x.id===l.prod.id)
-      if(p) p.cost_price=parseFloat(l.cost)||0
-      await sb.from('products').update({cost_price:parseFloat(l.cost)||0}).eq('id',l.prod.id)
+      if(p){p.qty=newQty; p.cost_price=newCost}
     }
     // Update PO in memory
     if(oldPo) Object.assign(oldPo, poData)
