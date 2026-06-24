@@ -32,11 +32,11 @@ const erow = (n,m) => `<tr class="erow"><td colspan="${n}">${m}</td></tr>`
 const delBtn = fn => `<button class="btn icon ghost" onclick="${fn}" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;color:var(--red)"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></button>`
 const editBtn = fn => `<button class="btn icon ghost" onclick="${fn}" title="Edit" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>`
 
-function toast(msg, ok=true) {
+function toast(msg, ok=true, duration=2800) {
   el('toast-msg').textContent = msg
   el('toast').querySelector('svg').style.color = ok ? '#4ADE80' : '#F87171'
   el('toast').classList.add('show')
-  setTimeout(() => el('toast').classList.remove('show'), 2800)
+  setTimeout(() => el('toast').classList.remove('show'), duration)
 }
 function saved() { el('tsave').style.opacity='1'; setTimeout(()=>el('tsave').style.opacity='0',1500) }
 function setDb(ok,msg) { el('dbdot').className='tdb '+(ok?'':'red'); el('dbtext').textContent=msg }
@@ -715,11 +715,17 @@ window.savePurchase = async function() {
         if(p){p.qty=newQty; p.cost_price=newCost}
       }
     }
+    if(!po || !po.id) {
+      btn.disabled=false; btn.textContent='Save PO'
+      return toast('⚠️ Save may have failed - no confirmation from server. Please check Purchases list!', false)
+    }
     purchases.unshift(po)
     if(supp){supp.totalPurchased=(supp.totalPurchased||0)+baseAmt;if(status==='paid')supp.totalPaid=(supp.totalPaid||0)+baseAmt;else supp.owed=(supp.owed||0)+baseAmt}
     btn.disabled=false; btn.textContent='Save PO'
     renderPurchases(); renderSuppliers(); renderStock(); renderDash()
-    closeModal('mo-purchase'); saved(); toast('Purchase saved! ✓'); updateBadges()
+    closeModal('mo-purchase'); saved()
+    toast('✓ Purchase '+po.number+' saved successfully — confirmed in database', true)
+    updateBadges()
   }
 }
 window.delPurchase = async function(id) {
