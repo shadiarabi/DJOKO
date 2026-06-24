@@ -74,9 +74,9 @@ window.ftbl = ftbl
 window.openModal = function(id) {
   const d = td()
   if(id==='mo-settings'){el('set-co').value=settings.company;el('set-addr').value=settings.address||'';el('set-ph').value=settings.phone||'';el('set-em').value=settings.email||'';el('set-vat').value=settings.vat_number||'';el('set-ip').value=settings.invoice_prefix||'INV-';el('set-pt').value=settings.payment_terms||30}
-  if(id==='mo-customer') bcs('cl-cur')
-  if(id==='mo-supplier') bcs('su-cur')
-  if(id==='mo-stock') el('sk-code').value='PRD-'+(products.length+1).toString().padStart(3,'0')
+  if(id==='mo-customer') { delete el('mo-customer').dataset.editId; bcs('cl-cur') }
+  if(id==='mo-supplier') { delete el('mo-supplier').dataset.editId; bcs('su-cur') }
+  if(id==='mo-stock') { delete el('mo-stock').dataset.editId; el('sk-code').value='PRD-'+(products.length+1).toString().padStart(3,'0') }
   if(id==='mo-invoice'){
     bcs('inv-cur','BRL');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30)
     // Use last saved taxa rate, not hardcoded 5.50
@@ -92,13 +92,32 @@ window.openModal = function(id) {
     el('inv-save-btn').textContent='Save invoice'
     el('mo-invoice').querySelector('.mh h3').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> New Sales Invoice'
   }
-  if(id==='mo-purchase'){bcs('po-cur');el('po-date').value=d;el('po-del').value=addD(d,14);el('po-num').value=(settings.po_prefix||'PO-')+(purchases.length+1).toString().padStart(3,'0');pSel('po-sup',suppliers,'name','<option value="">Select supplier...</option>');poLines=[];addPoLine();renderPoLines()}
+  if(id==='mo-purchase'){
+    // CRITICAL: clear any leftover edit state from a cancelled edit
+    delete el('mo-purchase').dataset.editId
+    delete el('mo-purchase').dataset.editOldStatus
+    delete el('mo-purchase').dataset.editBaseAmt
+    bcs('po-cur');el('po-date').value=d;el('po-del').value=addD(d,14)
+    el('po-num').value=(settings.po_prefix||'PO-')+(purchases.length+1).toString().padStart(3,'0')
+    el('po-status').value='pending'
+    pSel('po-sup',suppliers,'name','<option value="">Select supplier...</option>')
+    poLines=[];addPoLine();renderPoLines()
+    if(el('po-save-btn')) el('po-save-btn').textContent='Save PO'
+    const h3=el('mo-purchase').querySelector('.mh h3')
+    if(h3) h3.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;color:var(--acc)"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg> New Purchase Order'
+  }
   if(id==='mo-receipt'){bcs('rc-cur');el('rc-date').value=d;pSel('rc-cust',customers,'name','<option value="">Select customer...</option>')}
   if(id==='mo-payment'){bcs('py-cur');el('py-date').value=d;pSel('py-sup',suppliers,'name','<option value="">Select supplier...</option>')}
-  if(id==='mo-expense'){bcs('ex-cur');el('ex-date').value=d}
+  if(id==='mo-expense'){ delete el('mo-expense').dataset.editId; bcs('ex-cur');el('ex-date').value=d }
   el(id).classList.add('open')
 }
-window.closeModal = function(id) { el(id).classList.remove('open') }
+window.closeModal = function(id) {
+  el(id).classList.remove('open')
+  // Safety: clear any edit-mode flags when modal is closed/cancelled
+  delete el(id).dataset.editId
+  delete el(id).dataset.editOldStatus
+  delete el(id).dataset.editBaseAmt
+}
 document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}))
 window.changeCurrency = function() { baseCur=el('base-currency').value; renderAll() }
 
