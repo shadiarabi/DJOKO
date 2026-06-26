@@ -18,7 +18,7 @@ const RATES = {USD:1,EUR:0.92,GBP:0.79,IDR:15800,BRL:4.97,JPY:149.5,CNY:7.24,AED
 // ── STATE ─────────────────────────────────────────────────
 let baseCur = 'USD'
 let settings = {company:'DJOKO',address:'',phone:'',email:'',vat_number:'',invoice_prefix:'INV-',po_prefix:'PO-',payment_terms:30}
-let customers=[], suppliers=[], products=[], invoices=[], purchases=[], receipts=[], payments=[], expenses=[]
+let customers=[], suppliers=[], products=[], invoices=[], purchases=[], receipts=[], payments=[], expenses=[], stockAdjustments=[]
 let invLines=[], poLines=[]
 
 // ── HELPERS ───────────────────────────────────────────────
@@ -109,6 +109,13 @@ window.openModal = function(id) {
   if(id==='mo-receipt'){bcs('rc-cur');el('rc-date').value=d;pSel('rc-cust',customers,'name','<option value="">Select customer...</option>')}
   if(id==='mo-payment'){bcs('py-cur');el('py-date').value=d;pSel('py-sup',suppliers,'name','<option value="">Select supplier...</option>')}
   if(id==='mo-expense'){ delete el('mo-expense').dataset.editId; bcs('ex-cur');el('ex-date').value=d }
+  if(id==='mo-stockadj'){
+    pSel('adj-prod', products, 'name', '<option value="">Select product...</option>')
+    el('adj-current').value=''; el('adj-new').value=''
+    el('adj-diff').textContent='—'; el('adj-diff').style.color='var(--txt)'
+    el('adj-reason').value='Physical count correction'; el('adj-notes').value=''
+  }
+  if(id==='mo-adj-history'){ renderAdjHistory() }
   el(id).classList.add('open')
 }
 window.closeModal = function(id) {
@@ -464,6 +471,89 @@ window.saveStock = async function() {
   closeModal('mo-stock'); saved(); toast(editId?'Product updated':'Product added')
   ;['sk-code','sk-name','sk-cat','sk-qty','sk-reorder','sk-cost','sk-price'].forEach(id=>el(id).value='')
   el('mo-stock').querySelector('.mf button:last-child').textContent='Add product'
+}
+
+// ── STOCK ADJUSTMENT ──────────────────────────────────────
+window.loadAdjCurrentQty = function() {
+  const pid = el('adj-prod').value
+  const p = products.find(x=>x.id===pid)
+  el('adj-current').value = p ? p.qty : ''
+  el('adj-new').value = ''
+  el('adj-diff').textContent = '—'
+  el('adj-diff').style.color = 'var(--txt)'
+}
+
+window.calcAdjDiff = function() {
+  const current = parseFloat(el('adj-current').value) || 0
+  const newQty = parseFloat(el('adj-new').value)
+  const diffEl = el('adj-diff')
+  if(isNaN(newQty)) { diffEl.textContent = '—'; diffEl.style.color='var(--txt)'; return }
+  const diff = newQty - current
+  if(diff > 0) {
+    diffEl.textContent = '+' + diff + ' units (stock increased)'
+    diffEl.style.color = 'var(--grn)'
+  } else if(diff < 0) {
+    diffEl.textContent = diff + ' units (stock decreased)'
+    diffEl.style.color = 'var(--red)'
+  } else {
+    diffEl.textContent = '0 (no change)'
+    diffEl.style.color = 'var(--tx2)'
+  }
+}
+
+window.saveStockAdjustment = async function() {
+  const pid = el('adj-prod').value
+  if(!pid) return alert('Select a product')
+  const p = products.find(x=>x.id===pid)
+  if(!p) return alert('Product not found')
+  const newQty = parseFloat(el('adj-new').value)
+  if(isNaN(newQty) || newQty < 0) return alert('Enter a valid new quantity')
+  const oldQty = parseFloat(p.qty) || 0
+  const diff = newQty - oldQty
+  const reason = el('adj-reason').value
+  const notes = el('adj-notes').value
+
+  if(diff === 0) return toast('No change to apply', false)
+
+  if(!confirm(`Confirm stock adjustment for ${p.name}:\nOld qty: ${oldQty}\nNew qty: ${newQty}\nDifference: ${diff > 0 ? '+' : ''}${diff}\nReason: ${reason}\n\nThis will be logged permanently.`)) return
+
+  // Update product qty
+  const {error: pe} = await sb.from('products').update({qty: newQty}).eq('id', pid)
+  if(pe) return toast('Error updating product: '+pe.message, false)
+
+  // Log the adjustment
+  const {data: adjData, error: ae} = await sb.from('stock_adjustments').insert({
+    product_id: pid,
+    product_name: p.name,
+    product_code: p.code,
+    old_qty: oldQty,
+    new_qty: newQty,
+    difference: diff,
+    reason: reason,
+    notes: notes
+  }).select().single()
+  if(ae) console.warn('Could not log adjustment:', ae.message)
+  else stockAdjustments.unshift(adjData)
+
+  // Update in memory
+  p.qty = newQty
+
+  renderStock(); renderStockStats(); renderDash()
+  closeModal('mo-stockadj'); saved()
+  toast(`✓ Stock adjusted: ${p.name} ${diff > 0 ? '+' : ''}${diff} units`, true)
+}
+
+function renderAdjHistory() {
+  const tb = el('adj-history-tb')
+  if(!stockAdjustments.length) { tb.innerHTML = erow(6, 'No adjustments recorded yet'); return }
+  tb.innerHTML = stockAdjustments.map(a => `<tr>
+    <td style="font-size:11px;color:var(--tx2)">${new Date(a.created_at).toLocaleString()}</td>
+    <td><strong>${a.product_name}</strong><br><code style="font-size:10px">${a.product_code||''}</code></td>
+    <td>${a.old_qty}</td>
+    <td>${a.new_qty}</td>
+    <td style="font-weight:700;color:${a.difference>0?'var(--grn)':'var(--red)'}">${a.difference>0?'+':''}${a.difference}</td>
+    <td style="font-size:11px">${a.reason}${a.notes?'<br><span style="color:var(--tx2)">'+a.notes+'</span>':''}</td>
+  </tr>`).join('')
 }
 
 window.delStock = async function(id) {
@@ -1418,7 +1508,7 @@ async function loadAll() {
     setDb(true,'Connected')
     const {data:sRows}=await sb.from('settings').select('*').limit(1)
     if(sRows?.length){Object.assign(settings,sRows[0]);baseCur=settings.base_currency||'USD';el('base-currency').value=baseCur;el('tco').textContent=settings.company}
-    const [c,s,p,inv,po,rc,py,ex]=await Promise.all([
+    const [c,s,p,inv,po,rc,py,ex,adj]=await Promise.all([
       sb.from('customers').select('*').order('created_at'),
       sb.from('suppliers').select('*').order('created_at'),
       sb.from('products').select('*').order('created_at'),
@@ -1426,10 +1516,12 @@ async function loadAll() {
       sb.from('purchases').select('*').order('date',{ascending:false}),
       sb.from('receipts').select('*').order('date',{ascending:false}),
       sb.from('payments').select('*').order('date',{ascending:false}),
-      sb.from('expenses').select('*').order('date',{ascending:false})
+      sb.from('expenses').select('*').order('date',{ascending:false}),
+      sb.from('stock_adjustments').select('*').order('created_at',{ascending:false})
     ])
     customers=c.data||[]; suppliers=s.data||[]; products=p.data||[]
     invoices=inv.data||[]; purchases=po.data||[]; receipts=rc.data||[]; payments=py.data||[]; expenses=ex.data||[]
+    stockAdjustments=adj.data||[]
     await computeBalances()
     renderAll(); updateBadges()
     toast('Connected! '+customers.length+' customers, '+invoices.length+' invoices')
