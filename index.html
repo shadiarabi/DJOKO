@@ -169,6 +169,10 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
 <div class="page active" id="page-dashboard">
   <div class="ph"><div><div class="pt">Dashboard</div><div class="ps" id="dash-date"></div></div>
   <div class="br"><button class="btn pri" onclick="nav(document.querySelector('.ni[onclick*=invoices]'),'invoices');setTimeout(()=>openModal('mo-invoice'),100)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New invoice</button></div></div>
+  <div id="stock-warning-banner" style="display:none;align-items:flex-start;gap:10px;background:#FEF3C7;border:1px solid #FBBF24;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:#92400E">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;flex-shrink:0;margin-top:1px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span></span>
+  </div>
   <div class="kgrid">
     <div class="kpi"><div class="kico ki-b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="klbl">Revenue</div><div class="kval b" id="k-rev">—</div><div class="ksub">Total invoiced</div></div>
     <div class="kpi"><div class="kico ki-g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="klbl">Net profit</div><div class="kval g" id="k-net">—</div><div class="ksub">After expenses</div></div>
