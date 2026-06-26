@@ -241,7 +241,9 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
 <div class="page" id="page-stock">
   <div class="ph"><div><div class="pt">Inventory</div><div class="ps">Products, stock levels &amp; valuation</div></div>
   <div class="br">
+    <button class="btn" onclick="openModal('mo-adj-history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Adjustment History</button>
     <button class="btn" onclick="exportCSV()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export CSV</button>
+    <button class="btn warn" onclick="openModal('mo-stockadj')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Stock Adjustment</button>
     <button class="btn pri" onclick="openModal('mo-stock')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add product</button>
   </div></div>
   <div class="kgrid" style="grid-template-columns:repeat(4,1fr)">
@@ -350,6 +352,43 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
   <div class="fr"><div class="fg"><label>Cost price</label><input id="sk-cost" type="number" placeholder="0.00" min="0"></div><div class="fg"><label>Selling price</label><input id="sk-price" type="number" placeholder="0.00" min="0"></div></div>
 </div>
 <div class="mf"><button class="btn" onclick="closeModal('mo-stock')">Cancel</button><button class="btn pri" onclick="saveStock()">Add product</button></div>
+</div></div>
+
+<!-- STOCK ADJUSTMENT -->
+<div class="ov" id="mo-stockadj"><div class="modal"><div class="mh"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Stock Adjustment</h3><button class="btn icon ghost" onclick="closeModal('mo-stockadj')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+<div class="mb">
+  <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:10px;margin-bottom:14px;font-size:11px;color:#92400E">
+    Use this to correct stock quantities after a physical count. Every change is logged with a reason for audit purposes.
+  </div>
+  <div class="fg"><label>Product *</label><select id="adj-prod" onchange="loadAdjCurrentQty()"><option value="">Select product...</option></select></div>
+  <div class="fr">
+    <div class="fg"><label>Current qty (system)</label><input id="adj-current" type="number" readonly style="background:#F3F4F6"></div>
+    <div class="fg"><label>New qty (physical count) *</label><input id="adj-new" type="number" min="0" oninput="calcAdjDiff()"></div>
+  </div>
+  <div class="fg">
+    <label>Difference</label>
+    <div id="adj-diff" style="padding:8px 10px;background:#F9FAFB;border:1px solid var(--bdr);border-radius:6px;font-weight:700;font-size:14px">—</div>
+  </div>
+  <div class="fg"><label>Reason *</label><select id="adj-reason">
+    <option>Physical count correction</option>
+    <option>Damaged / defective</option>
+    <option>Lost / stolen</option>
+    <option>Data entry error</option>
+    <option>System bug correction</option>
+    <option>Returned by customer</option>
+    <option>Other</option>
+  </select></div>
+  <div class="fg"><label>Notes</label><textarea id="adj-notes" rows="2" placeholder="Additional details..."></textarea></div>
+</div>
+<div class="mf"><button class="btn" onclick="closeModal('mo-stockadj')">Cancel</button><button class="btn warn" onclick="saveStockAdjustment()">Apply Adjustment</button></div>
+</div></div>
+
+<!-- ADJUSTMENT HISTORY -->
+<div class="ov" id="mo-adj-history"><div class="modal" style="width:680px"><div class="mh"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Stock Adjustment History</h3><button class="btn icon ghost" onclick="closeModal('mo-adj-history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+<div class="mb">
+  <div class="tw"><table><thead><tr><th>Date</th><th>Product</th><th>Old qty</th><th>New qty</th><th>Diff</th><th>Reason</th></tr></thead><tbody id="adj-history-tb"></tbody></table></div>
+</div>
+<div class="mf"><button class="btn" onclick="closeModal('mo-adj-history')">Close</button></div>
 </div></div>
 
 <!-- INVOICE -->
