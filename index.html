@@ -220,10 +220,42 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
 <!-- SUPPLIERS -->
 <div class="page" id="page-suppliers">
   <div class="ph"><div><div class="pt">Suppliers</div><div class="ps">Manage vendors &amp; balances</div></div>
-  <button class="btn pri" onclick="openModal('mo-supplier')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add supplier</button></div>
+  <div class="br">
+    <button class="btn warn" onclick="openModal('mo-suppadj')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Balance Adjustment</button>
+    <button class="btn pri" onclick="openModal('mo-supplier')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add supplier</button>
+  </div></div>
   <div class="card"><div class="ch"><div class="ct">Supplier ledger</div><input placeholder="Search…" oninput="ftbl('supp-tb',this.value)" style="padding:5px 9px;border:1px solid var(--bdr2);border-radius:5px;font-size:11px;width:160px"></div>
   <div class="tw"><table><thead><tr><th>#</th><th>Supplier</th><th>Phone</th><th>Currency</th><th>Purchased</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr></thead><tbody id="supp-tb"></tbody></table></div></div>
 </div>
+
+<!-- SUPPLIER BALANCE ADJUSTMENT -->
+<div class="ov" id="mo-suppadj"><div class="modal"><div class="mh"><h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Supplier Balance Adjustment</h3><button class="btn icon ghost" onclick="closeModal('mo-suppadj')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+<div class="mb">
+  <div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:10px;margin-bottom:14px;font-size:11px;color:#92400E">
+    Use this to correct a supplier's balance to match their official records (e.g. after reconciling with the supplier directly). This adds a balancing entry — it does not delete any purchase or payment history.
+  </div>
+  <div class="fg"><label>Supplier *</label><select id="sadj-sup" onchange="loadSuppAdjCurrent()"><option value="">Select supplier...</option></select></div>
+  <div class="fr">
+    <div class="fg"><label>Current balance owed (system)</label><input id="sadj-current" type="number" readonly style="background:#F3F4F6"></div>
+    <div class="fg"><label>Correct balance owed *</label><input id="sadj-new" type="number" min="0" oninput="calcSuppAdjDiff()"></div>
+  </div>
+  <div class="fg">
+    <label>Difference</label>
+    <div id="sadj-diff" style="padding:8px 10px;background:#F9FAFB;border:1px solid var(--bdr);border-radius:6px;font-weight:700;font-size:14px">—</div>
+  </div>
+  <div class="fg"><label>Reason *</label><select id="sadj-reason">
+    <option>Reconciled with supplier directly</option>
+    <option>Missing purchase recovered manually</option>
+    <option>Duplicate purchase removed</option>
+    <option>Currency/exchange rate correction</option>
+    <option>Data entry error</option>
+    <option>System bug correction</option>
+    <option>Other</option>
+  </select></div>
+  <div class="fg"><label>Notes</label><textarea id="sadj-notes" rows="2" placeholder="Additional details..."></textarea></div>
+</div>
+<div class="mf"><button class="btn" onclick="closeModal('mo-suppadj')">Cancel</button><button class="btn warn" onclick="saveSuppAdjustment()">Apply Adjustment</button></div>
+</div></div>
 
 <!-- PURCHASES -->
 <div class="page" id="page-purchases">
