@@ -1500,6 +1500,50 @@ async function computeBalances() {
   }
 }
 
+// ── AUTOMATIC STOCK CONSISTENCY CHECK ──────────────────────
+// Runs after every data load. Reconciles total purchased - total sold + adjustments
+// against the actual current qty stored on each product. Flags mismatches so you
+// can use Stock Adjustment to fix them — this does NOT auto-correct, only warns.
+async function checkStockConsistency() {
+  try {
+    const [allPurchaseLines, allInvoiceLines] = await Promise.all([
+      sb.from('purchase_lines').select('product_id,qty'),
+      sb.from('invoice_lines').select('product_id,qty')
+    ])
+    const purchasedMap = {}
+    ;(allPurchaseLines.data||[]).forEach(l=>{ if(l.product_id) purchasedMap[l.product_id]=(purchasedMap[l.product_id]||0)+(parseFloat(l.qty)||0) })
+    const soldMap = {}
+    ;(allInvoiceLines.data||[]).forEach(l=>{ if(l.product_id) soldMap[l.product_id]=(soldMap[l.product_id]||0)+(parseFloat(l.qty)||0) })
+    const adjMap = {}
+    stockAdjustments.forEach(a=>{ if(a.product_id) adjMap[a.product_id]=(adjMap[a.product_id]||0)+(parseFloat(a.difference)||0) })
+
+    const mismatches = []
+    for(const p of products) {
+      const purchased = purchasedMap[p.id]||0
+      const sold = soldMap[p.id]||0
+      const adjusted = adjMap[p.id]||0
+      const expected = purchased - sold + adjusted
+      const diff = (parseFloat(p.qty)||0) - expected
+      if(Math.abs(diff) > 0.01) {
+        mismatches.push({name:p.name, code:p.code, current:p.qty, expected, diff})
+      }
+    }
+
+    const banner = el('stock-warning-banner')
+    if(!banner) return
+    if(mismatches.length > 0) {
+      banner.style.display='flex'
+      banner.querySelector('span').textContent =
+        '⚠️ ' + mismatches.length + ' product(s) have stock that doesn\'t match purchases minus sales. Recommend a physical count — use Stock Adjustment in Inventory to correct: ' +
+        mismatches.map(m=>m.name+' (system: '+m.current+', expected: '+m.expected.toFixed(0)+')').join('; ')
+    } else {
+      banner.style.display='none'
+    }
+  } catch(e) {
+    console.warn('Stock consistency check skipped:', e.message)
+  }
+}
+
 async function loadAll() {
   loading(true)
   try {
@@ -1525,6 +1569,7 @@ async function loadAll() {
     await computeBalances()
     renderAll(); updateBadges()
     toast('Connected! '+customers.length+' customers, '+invoices.length+' invoices')
+    checkStockConsistency() // runs async, updates banner when ready
   } catch(err) {
     setDb(false,'Not connected')
     toast('Database error: '+err.message, false)
