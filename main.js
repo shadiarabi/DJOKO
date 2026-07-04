@@ -78,8 +78,12 @@ window.openModal = function(id) {
   if(id==='mo-supplier') { delete el('mo-supplier').dataset.editId; bcs('su-cur') }
   if(id==='mo-stock') { delete el('mo-stock').dataset.editId; el('sk-code').value='PRD-'+(products.length+1).toString().padStart(3,'0') }
   if(id==='mo-invoice'){
-    bcs('inv-cur','BRL');el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30)
-    // Use last saved taxa rate, not hardcoded 5.50
+    // Invoice currency: only USD and BRL
+    el('inv-cur').innerHTML = '<option value="USD" selected>USD — US Dollar</option><option value="BRL">BRL — Brazilian Real</option>'
+    el('inv-date').value=d;el('inv-due').value=addD(d,settings.payment_terms||30)
+    // Default USD — hide conversion box. If BRL selected, it will show.
+    if(el('inv-conv-box')) el('inv-conv-box').style.display = 'none'
+    if(el('inv-total-label')) el('inv-total-label').textContent = 'TOTAL (USD $):'
     const lastTaxa = (() => { try { return localStorage.getItem('djoko_last_taxa') } catch(e){ return null } })()
     if(el('inv-taxa')) el('inv-taxa').value = lastTaxa || '5.50'
     // Generate unique invoice number using count + timestamp suffix
@@ -324,20 +328,31 @@ window.calcInv = function() {
   const discAmt = sub * discPct / 100
   const total = Math.max(0, sub - discAmt)
 
-  // Total commission (direct R$ amounts)
+  // Total commission
   const totalCom = invLines.reduce((a,l)=>a+(parseFloat(l.com)||0),0)
-  // Show totals in invoice currency (BRL)
+
+  // Show main totals in selected currency
   if(el('inv-sub')) el('inv-sub').textContent = fc(sub, cur)
   if(el('inv-disc-amt')) el('inv-disc-amt').textContent = discAmt>0 ? '- '+fc(discAmt,cur) : ''
   if(el('inv-total')) el('inv-total').textContent = fc(total, cur)
-  if(el('inv-com-total')) el('inv-com-total').textContent = totalCom>0 ? 'R$'+totalCom.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—'
+  if(el('inv-com-total')) el('inv-com-total').textContent = totalCom>0 ? fc(totalCom,cur) : '—'
 
-  // USD equivalent: taxa = how many R$ per 1 USD (e.g. 5.50)
-  // so USD = BRL total / taxa
-  const taxa = parseFloat(el('inv-taxa')?.value) || 5.50
-  const totalUSD = taxa > 0 ? total / taxa : 0
-  if(el('inv-total-usd')) {
-    el('inv-total-usd').textContent = '$' + totalUSD.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+  // Show/hide BRL→USD conversion box based on selected currency
+  const convBox = el('inv-conv-box')
+  const totalLabel = el('inv-total-label')
+  if(cur === 'USD') {
+    // USD invoice — hide conversion, update label
+    if(convBox) convBox.style.display = 'none'
+    if(totalLabel) totalLabel.textContent = 'TOTAL (USD $):'
+  } else {
+    // BRL invoice — show conversion box
+    if(convBox) convBox.style.display = 'block'
+    if(totalLabel) totalLabel.textContent = 'TOTAL (BRL R$):'
+    const taxa = parseFloat(el('inv-taxa')?.value) || 5.50
+    const totalUSD = taxa > 0 ? total / taxa : 0
+    if(el('inv-total-usd')) {
+      el('inv-total-usd').textContent = '$' + totalUSD.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+    }
   }
 }
 
@@ -648,8 +663,8 @@ window.saveInvoice = async function() {
   const discPct=parseFloat(el('inv-disc').value)||0
   const total=sub*(1-discPct/100)
   const taxa = parseFloat(el('inv-taxa')?.value) || 5.50
-  // If currency is BRL, convert to USD using taxa (1 USD = taxa BRL)
-  const baseAmt = cur === 'BRL' ? (taxa > 0 ? total / taxa : total) : toBase(total, cur)
+  // BRL: convert to USD using taxa. USD: use total directly. Other: use standard rates
+  const baseAmt = cur === 'BRL' ? (taxa > 0 ? total / taxa : total) : cur === 'USD' ? total : toBase(total, cur)
   const cogs=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(l.prod.cost_price||0)),0)
   const status=el('inv-status').value
   const paid=status==='paid'?baseAmt:status==='partial'?baseAmt*0.5:0
@@ -761,7 +776,9 @@ window.editInvoice = async function(id) {
   if(error) return toast('Error loading invoice: '+error.message, false)
 
   // Fill in header fields
-  bcs('inv-cur', inv.currency||'BRL')
+  // Invoice currency: only USD and BRL
+  el('inv-cur').innerHTML = '<option value="USD">USD — US Dollar</option><option value="BRL">BRL — Brazilian Real</option>'
+  el('inv-cur').value = inv.currency||'USD'
   // Set default taxa
   // Load the SAVED taxa rate from the invoice record
   const savedTaxa = (inv.taxa && parseFloat(inv.taxa) > 0) ? parseFloat(inv.taxa) : null
@@ -1372,7 +1389,7 @@ window.printInvoice = async function(id) {
   }
   doc.setFillColor(37,99,235); doc.rect(bx,sy,bw,11,'F')
   doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(10)
-  doc.text('TOTAL '+inv.currency,bx+3,sy+7.5)
+  doc.text(inv.currency==='BRL'?'TOTAL BRL':'TOTAL USD',bx+3,sy+7.5)
   doc.setFontSize(11)
   doc.text(fc(inv.total,inv.currency),bx+bw-3,sy+7.5,{align:'right'})
   sy+=13
