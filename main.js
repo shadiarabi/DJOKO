@@ -139,7 +139,7 @@ document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.
 window.changeCurrency = function() { baseCur=el('base-currency').value; renderAll() }
 
 // ── INVOICE LINES ─────────────────────────────────────────
-window.addInvLine = function() { invLines.push({prod:null,qty:1,price:0,disc:0,com:0}); renderInvLines() }
+window.addInvLine = function() { invLines.push({prod:null,qty:1,price:0,disc:0,com:0,imei:''}); renderInvLines() }
 window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPoLines() }
 // ── RENDER INVOICE LINES ──────────────────────────────────
 function renderInvLines() {
@@ -178,6 +178,16 @@ function renderInvLines() {
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="inv-lt-'+i+'">'+fc(lt,cur)+'</td>'
     html += '<td style="padding:4px 0"><button onclick="rmInvLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
     html += '</tr>'
+    // IMEI row below this line
+    html += '<tr><td colspan="7" style="padding:2px 4px 8px 4px">'
+    html += '<div style="display:flex;align-items:flex-start;gap:6px;background:#F0FDF4;border:1px solid #BBF7D0;border-radius:5px;padding:6px 8px">'
+    html += '<svg viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;margin-top:2px"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>'
+    html += '<div style="flex:1">'
+    html += '<div style="font-size:9px;font-weight:700;color:#16A34A;margin-bottom:3px">IMEI / SERIAL</div>'
+    html += '<textarea id="inv-imei-'+i+'" placeholder="Enter IMEI numbers (one per line, e.g.: 352999001234567)" rows="'+(Math.max(1,parseFloat(l.qty)||1))+'" oninput="invLines['+i+'].imei=this.value" style="width:100%;padding:4px 6px;border:1px solid #BBF7D0;border-radius:4px;font-size:11px;font-family:monospace;background:#fff;resize:vertical;min-height:28px">'+((l.imei||''))+'</textarea>'
+    html += '<div style="font-size:9px;color:#16A34A;margin-top:2px">Qty: '+(parseFloat(l.qty)||0)+' — enter '+(parseFloat(l.qty)||0)+' IMEI(s), one per line</div>'
+    html += '</div></div>'
+    html += '</td></tr>'
   })
   // TOTALS ROW
   const totalQty = invLines.reduce((a,l)=>a+(parseFloat(l.qty)||0),0)
@@ -258,7 +268,15 @@ window.refreshPoLine = function(i) {
 }
 
 // ── GLOBAL LINE UPDATE HELPERS ─────────────────────────────
-window.setInvQty = function(i,v){ invLines[i].qty=parseFloat(v)||0; refreshInvLine(i) }
+window.setInvQty = function(i,v){ invLines[i].qty=parseFloat(v)||0; refreshInvLine(i); updateImeiHint(i) }
+window.updateImeiHint = function(i) {
+  // Update the IMEI qty hint without re-rendering the whole table
+  const qty = parseFloat(invLines[i].qty)||0
+  const hint = document.querySelector('#inv-imei-'+i+' ~ div')
+  if(hint) hint.textContent = 'Qty: '+qty+' — enter '+qty+' IMEI(s), one per line'
+  const ta = el('inv-imei-'+i)
+  if(ta) ta.rows = Math.max(1, qty)
+}
 window.setInvCom = function(i,v){ invLines[i].com=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvPrice = function(i,v){ invLines[i].price=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvDisc = function(i,v){ invLines[i].disc=parseFloat(v)||0; refreshInvLine(i) }
@@ -689,7 +707,7 @@ window.saveInvoice = async function() {
     ;(oldInvLinesBeforeDelete||[]).forEach(ol=>{ oldInvQtyMap[ol.product_id] = (oldInvQtyMap[ol.product_id]||0) + (parseFloat(ol.qty)||0) })
     // Replace lines
     await sb.from('invoice_lines').delete().eq('invoice_id',editId)
-    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
+    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0),imei:l.imei||null})))
     // Adjust stock: restore old sold qty, then deduct new sold qty
     for(const l of valid){
       if(!l.prod?.id) continue
@@ -736,7 +754,7 @@ window.saveInvoice = async function() {
     try { localStorage.setItem('djoko_last_taxa', taxaVal) } catch(e){}
     const {data:inv,error}=await sb.from('invoices').insert({number:invNumber,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:taxaVal}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
-    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0)})))
+    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0),imei:l.imei||null})))
     for(const l of valid){
     const subQty = parseFloat(l.qty)||0
     const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
@@ -812,7 +830,8 @@ window.editInvoice = async function(id) {
       qty: parseFloat(l.qty) || 1,
       price: parseFloat(l.unit_price) || 0,
       disc: parseFloat(l.discount_pct) || 0,
-      com: parseFloat(l.commission_amt) || 0
+      com: parseFloat(l.commission_amt) || 0,
+      imei: l.imei || ''
     }
   })
 
@@ -1358,6 +1377,14 @@ window.printInvoice = async function(id) {
     doc.text(fc(l.line_total||0,inv.currency),W-mg-2,y+4.5,{align:'right'})
     doc.setDrawColor(229,231,235); doc.line(mg,y+7,W-mg,y+7)
     y+=8
+    // Print IMEI numbers if present
+    if(l.imei && l.imei.trim()) {
+      const imeis = l.imei.trim().split('\n').filter(x=>x.trim())
+      doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(22,163,74)
+      doc.text('IMEI: '+imeis.join(' | '),mg+3,y+4)
+      doc.setDrawColor(187,247,208); doc.line(mg,y+7,W-mg,y+7)
+      y+=8
+    }
   })
   // Totals row
   doc.setFillColor(243,244,246); doc.rect(mg,y,W-mg*2,8,'F')
