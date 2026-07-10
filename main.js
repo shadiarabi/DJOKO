@@ -1605,6 +1605,69 @@ window.printPurchase = async function(id) {
   toast('Purchase order PDF saved! ✓')
 }
 
+
+// ── IMEI SEARCH ───────────────────────────────────────────
+window.searchIMEI = async function(query) {
+  const q = (query||'').trim()
+  const resultsEl = el('imei-results')
+  if(!q || q.length < 5) {
+    resultsEl.innerHTML = '<div style="text-align:center;color:var(--tx2);padding:30px;font-size:13px">Enter at least 5 digits to search</div>'
+    return
+  }
+  resultsEl.innerHTML = '<div style="text-align:center;padding:30px;font-size:13px;color:var(--tx2)">Searching...</div>'
+  try {
+    const {data:lines, error} = await sb.from('invoice_lines').select('*, invoices(number,date,customer_name,status,currency,total)').ilike('imei','%'+q+'%')
+    if(error){ resultsEl.innerHTML='<div style="color:red;padding:20px">Error: '+error.message+'</div>'; return }
+    if(!lines||!lines.length){
+      resultsEl.innerHTML='<div class="card" style="text-align:center;padding:30px"><div style="font-size:40px;margin-bottom:10px">📱</div><div style="font-size:15px;font-weight:700">No results found</div><div style="font-size:12px;color:var(--tx2);margin-top:6px">IMEI <strong>'+q+'</strong> not found in any invoice</div></div>'
+      return
+    }
+    let html = '<div style="font-size:12px;color:var(--tx2);margin-bottom:12px">Found <strong>'+lines.length+'</strong> result(s) for: <code style="background:#F3F4F6;padding:2px 6px;border-radius:4px">'+q+'</code></div>'
+    lines.forEach(function(l) {
+      const inv = l.invoices||{}
+      const statusColor = inv.status==='paid'?'#16A34A':inv.status==='partial'?'#D97706':'#DC2626'
+      const allImeis = (l.imei||'').split('\n').map(function(x){return x.trim()}).filter(Boolean)
+      html += '<div class="card" style="margin-bottom:14px;border-left:4px solid #16A34A">'
+      html += '<div style="padding:14px 16px">'
+      // Header
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">'
+      html += '<div><div style="font-size:16px;font-weight:800">'+( inv.customer_name||'Unknown')+'</div>'
+      html += '<div style="font-size:11px;color:var(--tx2);margin-top:2px">Invoice <strong>'+(inv.number||'?')+'</strong> &middot; '+(inv.date||'?')+'</div></div>'
+      html += '<div style="text-align:right"><span style="background:'+statusColor+';color:#fff;padding:3px 10px;border-radius:12px;font-size:10px;font-weight:700;text-transform:uppercase">'+(inv.status||'?')+'</span>'
+      if(inv.total) html += '<div style="font-size:12px;font-weight:700;color:var(--acc);margin-top:4px">'+fc(inv.total,inv.currency||'USD')+'</div>'
+      html += '</div></div>'
+      // Product
+      html += '<div style="background:#F9FAFB;border-radius:6px;padding:10px;margin-bottom:10px">'
+      html += '<div style="font-size:10px;font-weight:700;color:var(--tx2);text-transform:uppercase;margin-bottom:4px">Product</div>'
+      html += '<div style="font-size:13px;font-weight:700">'+(l.product_name||'?')+'</div>'
+      html += '<div style="font-size:11px;color:var(--tx2);margin-top:2px">Qty: '+l.qty+' &middot; Price: '+fc(l.unit_price||0,inv.currency||'USD')+'</div></div>'
+      // IMEIs
+      html += '<div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:6px;padding:10px">'
+      html += '<div style="font-size:10px;font-weight:700;color:#16A34A;margin-bottom:6px">IMEI / Serial Numbers ('+allImeis.length+' total)</div>'
+      allImeis.forEach(function(imei, idx) {
+        const isMatch = imei.toLowerCase().indexOf(q.toLowerCase()) !== -1
+        const highlighted = isMatch ? imei.replace(new RegExp('('+q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<mark style="background:#FEF08A;padding:0 2px">$1</mark>') : imei
+        html += '<div style="font-family:monospace;font-size:12px;padding:4px 8px;border-radius:4px;margin-bottom:3px;'+(isMatch?'background:#DCFCE7;font-weight:700;border:1px solid #86EFAC':'color:var(--tx2)')+'">'+( idx+1)+'. '+highlighted+'</div>'
+      })
+      html += '</div>'
+      // Actions
+      html += '<div style="display:flex;gap:8px;margin-top:12px">'
+      const printBtn = document.createElement('button')
+      printBtn.className = 'btn sm'
+      printBtn.style.fontSize = '11px'
+      printBtn.innerHTML = 'Print Invoice'
+      printBtn.setAttribute('onclick', 'printInvoice("'+l.invoice_id+'")')
+      html += '<div id="imei-btn-'+l.id+'"></div>'
+      html += '<button class="btn sm" style="font-size:11px" data-inv="'+l.invoice_id+'" onclick="printInvoice(this.dataset.inv)">Print Invoice</button>'
+      html += '</div>'
+      html += '</div></div>'
+    })
+    resultsEl.innerHTML = html
+  } catch(err) {
+    resultsEl.innerHTML = '<div style="color:red;padding:20px">Error: '+err.message+'</div>'
+  }
+}
+
 window.exportCSV = function() {
   const h='Code,Product,Category,Qty,Cost,Price,Value\n'
   const r=products.map(p=>`"${p.code}","${p.name}","${p.category}",${p.qty},${p.cost_price},${p.sell_price},${p.qty*p.cost_price}`).join('\n')
