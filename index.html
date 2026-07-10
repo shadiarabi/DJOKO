@@ -160,6 +160,7 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
     <div class="nsl">Finance</div>
     <div class="ni" onclick="nav(this,'expenses')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Expenses</span></div>
     <div class="ni" onclick="nav(this,'reports')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span>Reports</span></div>
+    <div class="ni" onclick="nav(this,'imei')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg><span>IMEI Search</span></div>
   </div>
 </div>
 
@@ -547,6 +548,30 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
 </div>
 <div class="mf"><button class="btn" onclick="closeModal('mo-expense')">Cancel</button><button class="btn pri" onclick="saveExpense()">Save expense</button></div>
 </div></div>
+
+<!-- IMEI SEARCH PAGE -->
+<div class="page" id="page-imei">
+  <div class="ph">
+    <div><div class="pt">IMEI Search</div><div class="ps">Find which client received a specific iPhone</div></div>
+  </div>
+  <div class="card" style="max-width:640px;margin:0 auto 20px">
+    <div class="ch"><div class="ct">🔍 Search by IMEI / Serial Number</div></div>
+    <div style="padding:16px">
+      <div style="display:flex;gap:10px;margin-bottom:8px">
+        <input id="imei-search-input" type="text" placeholder="Enter IMEI or serial number (e.g. 352999001234567)"
+          style="flex:1;padding:10px 12px;border:2px solid var(--bdr2);border-radius:6px;font-size:13px;font-family:monospace"
+          oninput="searchIMEI(this.value)">
+        <button class="btn pri" onclick="searchIMEI(el('imei-search-input').value)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Search
+        </button>
+      </div>
+      <div style="font-size:11px;color:var(--tx2)">Partial IMEI works too — type at least 5 digits</div>
+    </div>
+  </div>
+  <div id="imei-results" style="max-width:640px;margin:0 auto"></div>
+</div>
+
 
 <script type="module" src="/main.js"></script>
 </body>
