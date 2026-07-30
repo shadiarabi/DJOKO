@@ -19,6 +19,8 @@ const RATES = {USD:1,EUR:0.92,GBP:0.79,IDR:15800,BRL:4.97,JPY:149.5,CNY:7.24,AED
 let baseCur = 'USD'
 let settings = {company:'DJOKO',address:'',phone:'',email:'',vat_number:'',invoice_prefix:'INV-',po_prefix:'PO-',payment_terms:30}
 let customers=[], suppliers=[], products=[], invoices=[], purchases=[], receipts=[], payments=[], expenses=[], stockAdjustments=[], supplierAdjustments=[]
+// Date filter state
+let dashFrom='', dashTo='', invFrom='', invTo=''
 let invLines=[], poLines=[]
 
 // ── HELPERS ───────────────────────────────────────────────
@@ -1167,9 +1169,11 @@ function renderInvoices() {
   const tb=el('inv-tb'); updateBadges()
   if(!invoices.length){tb.innerHTML=erow(11,'No invoices yet');return}
 
-  // Date filter
-  const from = el('inv-from')?.value || ''
-  const to = el('inv-to')?.value || ''
+  // Date filter — read from DOM and save to state
+  const invFromEl = el('inv-from'), invToEl = el('inv-to')
+  if(invFromEl && invFromEl.value !== undefined) invFrom = invFromEl.value
+  if(invToEl && invToEl.value !== undefined) invTo = invToEl.value
+  const from = invFrom, to = invTo
   let filtered = invoices.filter(inv=> (!from||inv.date>=from) && (!to||inv.date<=to))
 
   if(!filtered.length){tb.innerHTML=erow(11,'No invoices match the selected dates');return}
@@ -1272,9 +1276,11 @@ function renderExpenses() {
 }
 function renderDash() {
   el('dash-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})
-  // Date filter
-  const from = el('dash-from')?.value || ''
-  const to = el('dash-to')?.value || ''
+  // Date filter — read from DOM and save to state
+  const fromEl = el('dash-from'), toEl = el('dash-to')
+  if(fromEl && fromEl.value !== undefined) dashFrom = fromEl.value
+  if(toEl && toEl.value !== undefined) dashTo = toEl.value
+  const from = dashFrom, to = dashTo
   const filtInv = invoices.filter(i=> (!from||i.date>=from) && (!to||i.date<=to))
   const filtExp = expenses.filter(e=> (!from||e.date>=from) && (!to||e.date<=to))
   const isFiltered = from || to
@@ -1306,13 +1312,27 @@ function renderDash() {
   el('dash-ls').innerHTML=ls.length?ls.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bdr)"><div><strong style="font-size:12px">${p.name}</strong><br><span style="font-size:10px;color:var(--tx3)">${p.code}</span></div><div style="text-align:right">${skb(p.qty,p.reorder_level)}<br><span style="font-size:10px;color:var(--tx3)">${p.qty} left</span></div></div>`).join(''):'<div style="color:var(--tx3);font-size:12px;text-align:center;padding:14px">All stock levels OK</div>'
 }
 window.clearDashDates = function() {
+  dashFrom=''; dashTo=''
   if(el('dash-from')) el('dash-from').value=''
   if(el('dash-to')) el('dash-to').value=''
   renderDash()
 }
 window.clearInvDates = function() {
+  invFrom=''; invTo=''
   if(el('inv-from')) el('inv-from').value=''
   if(el('inv-to')) el('inv-to').value=''
+  renderInvoices()
+}
+window.applyDashFilter = function() {
+  const f = el('dash-from'), t = el('dash-to')
+  dashFrom = f ? f.value : ''
+  dashTo = t ? t.value : ''
+  renderDash()
+}
+window.applyInvFilter = function() {
+  const f = el('inv-from'), t = el('inv-to')
+  invFrom = f ? f.value : ''
+  invTo = t ? t.value : ''
   renderInvoices()
 }
 function updateBadges() {
