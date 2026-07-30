@@ -1165,24 +1165,57 @@ function renderStockStats() {
 }
 function renderInvoices() {
   const tb=el('inv-tb'); updateBadges()
-  if(!invoices.length){tb.innerHTML=erow(10,'No invoices yet');return}
-  tb.innerHTML=invoices.map(inv=>`<tr>
-    <td style="font-weight:700;color:var(--acc)">${inv.number}</td>
-    <td>${inv.customer_name}</td><td>${inv.date}</td>
-    <td style="color:${inv.due_date<td()&&inv.status!=='paid'?'var(--red)':'var(--tx2)'}">${inv.due_date||'—'}</td>
-    <td><span class="badge bcur">${inv.currency}</span></td>
-    <td style="font-weight:700">${fc(inv.total,inv.currency)}</td>
-    <td style="color:var(--grn)">${fmt(inv.paid_amount||0)}</td>
-    <td style="color:${(inv.balance||0)>0?'var(--red)':'var(--grn)'};font-weight:700">${fmt(inv.balance||0)}</td>
-    <td>${sbadge(inv.status)}</td>
-    <td style="white-space:nowrap">
-      <button class="btn sm" onclick="printInvoice('${inv.id}')" title="Print">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      </button>
-      <button class="btn icon ghost" onclick="editInvoice('${inv.id}')" title="Edit invoice" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-      ${delBtn(`delInvoice('${inv.id}')`)}
-    </td></tr>`).join('')
+  if(!invoices.length){tb.innerHTML=erow(11,'No invoices yet');return}
+
+  // Date filter
+  const from = el('inv-from')?.value || ''
+  const to = el('inv-to')?.value || ''
+  let filtered = invoices.filter(inv=> (!from||inv.date>=from) && (!to||inv.date<=to))
+
+  if(!filtered.length){tb.innerHTML=erow(11,'No invoices match the selected dates');return}
+
+  // Summary
+  const totalRev = filtered.reduce((a,i)=>a+i.base_amount,0)
+  const totalCogs = filtered.reduce((a,i)=>a+(i.cogs||0),0)
+  const totalProfit = totalRev - totalCogs
+  const summaryEl = el('inv-summary')
+  if(summaryEl) {
+    const isFiltered = from || to
+    summaryEl.innerHTML = (isFiltered?'<span style="color:var(--acc)">Filtered: </span>':'')+
+      filtered.length+' invoices &middot; Revenue: <strong>'+fmt(totalRev)+'</strong> &middot; '+
+      'Total P&L: <strong style="color:'+(totalProfit>=0?'#16A34A':'#DC2626')+'">'+fmt(totalProfit)+'</strong>'
+  }
+
+  tb.innerHTML=filtered.map(function(inv) {
+    const profit = inv.base_amount - (inv.cogs||0)
+    const profitColor = profit>0?'#16A34A':profit<0?'#DC2626':'var(--tx2)'
+    const profitIcon = profit>0?'▲':profit<0?'▼':'—'
+    return '<tr>'+
+    '<td style="font-weight:700;color:var(--acc)">'+inv.number+'</td>'+
+    '<td>'+inv.customer_name+'</td>'+
+    '<td>'+inv.date+'</td>'+
+    '<td style="color:'+(inv.due_date<td()&&inv.status!=='paid'?'var(--red)':'var(--tx2)')+'">'+( inv.due_date||'—')+'</td>'+
+    '<td><span class="badge bcur">'+inv.currency+'</span></td>'+
+    '<td style="font-weight:700">'+fc(inv.total,inv.currency)+'</td>'+
+    '<td style="color:#16A34A">'+fmt(inv.paid_amount||0)+'</td>'+
+    '<td style="color:'+((inv.balance||0)>0?'#DC2626':'#16A34A')+';font-weight:700">'+fmt(inv.balance||0)+'</td>'+
+    '<td style="font-weight:700;color:'+profitColor+'">'+
+      '<span style="font-size:9px">'+profitIcon+'</span> '+fmt(Math.abs(profit))+
+      '<div style="font-size:9px;color:var(--tx2);font-weight:400">Rev: '+fmt(inv.base_amount)+' · Cost: '+fmt(inv.cogs||0)+'</div>'+
+    '</td>'+
+    '<td>'+sbadge(inv.status)+'</td>'+
+    '<td style="white-space:nowrap">'+
+      '<button class="btn sm" data-id="'+inv.id+'" onclick="printInvoice(this.dataset.id)" title="Print">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>'+
+      '</button>'+
+      '<button class="btn icon ghost" data-id="'+inv.id+'" onclick="editInvoice(this.dataset.id)" title="Edit invoice" style="color:var(--acc)">'+
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'+
+      '</button>'+
+      delBtn('delInvoice("'+inv.id+'")')+
+    '</td></tr>'
+  }).join('')
 }
+
 function renderPurchases() {
   const tb=el('po-tb'); updateBadges()
   if(!purchases.length){tb.innerHTML=erow(9,'No purchases yet');return}
@@ -1239,9 +1272,15 @@ function renderExpenses() {
 }
 function renderDash() {
   el('dash-date').textContent=new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'})
-  const rev=invoices.reduce((a,i)=>a+i.base_amount,0)
-  const cogs=invoices.reduce((a,i)=>a+(i.cogs||0),0)
-  const exp=expenses.reduce((a,e)=>a+e.base_amount,0)
+  // Date filter
+  const from = el('dash-from')?.value || ''
+  const to = el('dash-to')?.value || ''
+  const filtInv = invoices.filter(i=> (!from||i.date>=from) && (!to||i.date<=to))
+  const filtExp = expenses.filter(e=> (!from||e.date>=from) && (!to||e.date<=to))
+  const isFiltered = from || to
+  const rev=filtInv.reduce((a,i)=>a+i.base_amount,0)
+  const cogs=filtInv.reduce((a,i)=>a+(i.cogs||0),0)
+  const exp=filtExp.reduce((a,e)=>a+e.base_amount,0)
   const net=rev-cogs-exp
   const recv=customers.reduce((a,c)=>a+(c.balance||0),0)
   const pay=suppliers.reduce((a,s)=>a+(s.owed||0),0)
@@ -1254,7 +1293,7 @@ function renderDash() {
   el('k-ov').textContent=ov
   const cols={Invoice:'#DBEAFE|#1E40AF',Purchase:'#FEF9C3|#854D0E',Receipt:'#DCFCE7|#166534',Payment:'#FEE2E2|#991B1B'}
   const rec=[
-    ...invoices.slice(0,4).map(i=>({t:'Invoice',r:i.number,p:i.customer_name,d:i.date,a:i.base_amount,s:i.status})),
+    ...filtInv.slice(0,4).map(i=>({t:'Invoice',r:i.number,p:i.customer_name,d:i.date,a:i.base_amount,s:i.status})),
     ...purchases.slice(0,3).map(p=>({t:'Purchase',r:p.number,p:p.supplier_name,d:p.date,a:p.base_amount,s:p.status})),
     ...receipts.slice(0,3).map(r=>({t:'Receipt',r:r.method,p:r.customer_name,d:r.date,a:r.base_amount,s:'paid'})),
     ...payments.slice(0,3).map(p=>({t:'Payment',r:p.method,p:p.supplier_name,d:p.date,a:p.base_amount,s:'paid'}))
@@ -1265,6 +1304,16 @@ function renderDash() {
   }).join(''):erow(6,'No transactions yet')
   const ls=products.filter(p=>p.qty<=p.reorder_level)
   el('dash-ls').innerHTML=ls.length?ls.map(p=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--bdr)"><div><strong style="font-size:12px">${p.name}</strong><br><span style="font-size:10px;color:var(--tx3)">${p.code}</span></div><div style="text-align:right">${skb(p.qty,p.reorder_level)}<br><span style="font-size:10px;color:var(--tx3)">${p.qty} left</span></div></div>`).join(''):'<div style="color:var(--tx3);font-size:12px;text-align:center;padding:14px">All stock levels OK</div>'
+}
+window.clearDashDates = function() {
+  if(el('dash-from')) el('dash-from').value=''
+  if(el('dash-to')) el('dash-to').value=''
+  renderDash()
+}
+window.clearInvDates = function() {
+  if(el('inv-from')) el('inv-from').value=''
+  if(el('inv-to')) el('inv-to').value=''
+  renderInvoices()
 }
 function updateBadges() {
   el('nb-inv').textContent=invoices.filter(i=>i.status!=='paid').length||''
