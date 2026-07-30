@@ -172,9 +172,10 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
   <div class="br" style="flex-wrap:wrap;gap:8px">
     <div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--bdr);border-radius:6px;padding:5px 10px">
       <span style="font-size:11px;color:var(--tx2);font-weight:600">From:</span>
-      <input type="date" id="dash-from" onchange="renderDash()" style="padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;color:var(--txt);background:var(--inp);cursor:pointer">
+      <input type="date" id="dash-from" style="padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;color:var(--txt);background:var(--inp);cursor:pointer">
       <span style="color:var(--tx2);font-size:11px">To:</span>
-      <input type="date" id="dash-to" onchange="renderDash()" style="padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;color:var(--txt);background:var(--inp);cursor:pointer">
+      <input type="date" id="dash-to" style="padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;color:var(--txt);background:var(--inp);cursor:pointer">
+      <button onclick="renderDash()" style="background:var(--acc);border:none;border-radius:4px;cursor:pointer;color:#fff;font-size:11px;font-weight:600;padding:4px 10px">🔍 Search</button>
       <button onclick="clearDashDates()" style="background:#F3F4F6;border:1px solid var(--bdr);border-radius:4px;cursor:pointer;color:var(--tx2);font-size:10px;padding:3px 7px">✕ Clear</button>
     </div>
     <button class="btn pri" onclick="nav(document.querySelector('.ni[onclick*=invoices]'),'invoices');setTimeout(()=>openModal('mo-invoice'),100)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>New invoice</button>
@@ -212,9 +213,10 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
   <div class="br" style="flex-wrap:wrap;gap:8px">
     <div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--bdr);border-radius:6px;padding:5px 10px">
       <span style="font-size:11px;color:var(--tx2);font-weight:600">From:</span>
-      <input type="date" id="inv-from" onchange="renderInvoices()" style="padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;color:var(--txt);background:var(--inp);cursor:pointer">
+      <input type="date" id="inv-from" style="padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;color:var(--txt);background:var(--inp);cursor:pointer">
       <span style="color:var(--tx2);font-size:11px">To:</span>
-      <input type="date" id="inv-to" onchange="renderInvoices()" style="padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;color:var(--txt);background:var(--inp);cursor:pointer">
+      <input type="date" id="inv-to" style="padding:3px 6px;border:1px solid var(--bdr2);border-radius:4px;font-size:11px;color:var(--txt);background:var(--inp);cursor:pointer">
+      <button onclick="renderInvoices()" style="background:var(--acc);border:none;border-radius:4px;cursor:pointer;color:#fff;font-size:11px;font-weight:600;padding:4px 10px">🔍 Search</button>
       <button onclick="clearInvDates()" style="background:#F3F4F6;border:1px solid var(--bdr);border-radius:4px;cursor:pointer;color:var(--tx2);font-size:10px;padding:3px 7px">✕ Clear</button>
     </div>
     <button class="btn sm" onclick="fInv('all')">All</button>
