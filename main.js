@@ -688,7 +688,9 @@ window.saveInvoice = async function() {
   const taxa = parseFloat(el('inv-taxa')?.value) || 5.50
   // BRL: convert to USD using taxa. USD: use total directly. Other: use standard rates
   const baseAmt = cur === 'BRL' ? (taxa > 0 ? total / taxa : total) : cur === 'USD' ? total : toBase(total, cur)
-  const cogs=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(l.prod.cost_price||0)),0)
+  // cogs is sum of qty * cost_price (cost_price is always in USD)
+  const cogsUSD=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(l.prod.cost_price||0)),0)
+  const cogs=cogsUSD // stored in USD same as base_amount
   const status=el('inv-status').value
   const paid=status==='paid'?baseAmt:status==='partial'?baseAmt*0.5:0
   const cust=customers.find(c=>c.id===cid)
@@ -1185,15 +1187,24 @@ function renderInvoices() {
   const summaryEl = el('inv-summary')
   if(summaryEl) {
     const isFiltered = from || to
-    summaryEl.innerHTML = (isFiltered?'<span style="color:var(--acc)">Filtered: </span>':'')+
-      filtered.length+' invoices &middot; Revenue: <strong>'+fmt(totalRev)+'</strong> &middot; '+
-      'Total P&L: <strong style="color:'+(totalProfit>=0?'#16A34A':'#DC2626')+'">'+fmt(totalProfit)+'</strong>'
+    const totalRevSum = filtered.reduce((a,i)=>a+(parseFloat(i.base_amount)||0),0)
+    const totalCostSum = filtered.reduce((a,i)=>a+(parseFloat(i.cogs)||0),0)
+    const totalProfitSum = totalRevSum - totalCostSum
+    summaryEl.innerHTML = (isFiltered?'<span style="color:var(--acc);font-weight:700">Filtered period: </span>':'')+
+      '<strong>'+filtered.length+'</strong> invoices &nbsp;|&nbsp; '+
+      'Total Revenue: <strong>'+fmt(totalRevSum)+'</strong> &nbsp;|&nbsp; '+
+      'Total Cost: <strong>'+fmt(totalCostSum)+'</strong> &nbsp;|&nbsp; '+
+      'Net P&L: <strong style="color:'+(totalProfitSum>=0?'#16A34A':'#DC2626')+';font-size:13px">'+(totalProfitSum>=0?'▲ ':'▼ ')+fmt(Math.abs(totalProfitSum))+'</strong>'
   }
 
   tb.innerHTML=filtered.map(function(inv) {
-    const profit = inv.base_amount - (inv.cogs||0)
+    // Profit = Revenue (USD) - Cost (USD)
+    const revenue = parseFloat(inv.base_amount)||0
+    const cost = parseFloat(inv.cogs)||0
+    const profit = revenue - cost
     const profitColor = profit>0?'#16A34A':profit<0?'#DC2626':'var(--tx2)'
-    const profitIcon = profit>0?'▲':profit<0?'▼':'—'
+    const profitIcon = profit>0?'▲ PROFIT':profit<0?'▼ LOSS':'—'
+    const profitBg = profit>0?'#F0FDF4':profit<0?'#FEF2F2':'transparent'
     return '<tr>'+
     '<td style="font-weight:700;color:var(--acc)">'+inv.number+'</td>'+
     '<td>'+inv.customer_name+'</td>'+
@@ -1203,9 +1214,10 @@ function renderInvoices() {
     '<td style="font-weight:700">'+fc(inv.total,inv.currency)+'</td>'+
     '<td style="color:#16A34A">'+fmt(inv.paid_amount||0)+'</td>'+
     '<td style="color:'+((inv.balance||0)>0?'#DC2626':'#16A34A')+';font-weight:700">'+fmt(inv.balance||0)+'</td>'+
-    '<td style="font-weight:700;color:'+profitColor+'">'+
-      '<span style="font-size:9px">'+profitIcon+'</span> '+fmt(Math.abs(profit))+
-      '<div style="font-size:9px;color:var(--tx2);font-weight:400">Rev: '+fmt(inv.base_amount)+' · Cost: '+fmt(inv.cogs||0)+'</div>'+
+    '<td style="background:'+profitBg+';border-radius:5px;padding:4px 6px">'+
+      '<div style="font-weight:800;font-size:12px;color:'+profitColor+'">'+fmt(Math.abs(profit))+'</div>'+
+      '<div style="font-size:9px;font-weight:700;color:'+profitColor+'">'+profitIcon+'</div>'+
+      '<div style="font-size:9px;color:var(--tx2);margin-top:1px">Sale: '+fmt(revenue)+' · Cost: '+fmt(cost)+'</div>'+
     '</td>'+
     '<td>'+sbadge(inv.status)+'</td>'+
     '<td style="white-space:nowrap">'+
