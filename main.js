@@ -18,7 +18,7 @@ const RATES = {USD:1,EUR:0.92,GBP:0.79,IDR:15800,BRL:4.97,JPY:149.5,CNY:7.24,AED
 // ── STATE ─────────────────────────────────────────────────
 let baseCur = 'USD'
 let settings = {company:'DJOKO',address:'',phone:'',email:'',vat_number:'',invoice_prefix:'INV-',po_prefix:'PO-',payment_terms:30}
-let customers=[], suppliers=[], products=[], invoices=[], purchases=[], receipts=[], payments=[], expenses=[], stockAdjustments=[], supplierAdjustments=[]
+let customers=[], suppliers=[], products=[], invoices=[], purchases=[], receipts=[], payments=[], expenses=[], stockAdjustments=[], supplierAdjustments=[], inventoryBatches=[]
 // Date filter state
 let dashFrom='', dashTo='', invFrom='', invTo=''
 let invLines=[], poLines=[]
@@ -141,7 +141,7 @@ document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{if(e.
 window.changeCurrency = function() { baseCur=el('base-currency').value; renderAll() }
 
 // ── INVOICE LINES ─────────────────────────────────────────
-window.addInvLine = function() { invLines.push({prod:null,qty:1,price:0,disc:0,com:0,imei:''}); renderInvLines() }
+window.addInvLine = function() { invLines.push({prod:null,qty:1,price:0,disc:0,com:0,imei:'',cost:0}); renderInvLines() }
 window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPoLines() }
 // ── RENDER INVOICE LINES ──────────────────────────────────
 function renderInvLines() {
@@ -152,6 +152,7 @@ function renderInvLines() {
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">PRICE</th>'
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:55px">DISC%</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#7C3AED;border-bottom:1px solid var(--bdr);width:90px">COM (R$)</th>'
+  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#B45309;border-bottom:1px solid var(--bdr);width:85px">COST $</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">TOTAL</th>'
   html += '<th style="border-bottom:1px solid var(--bdr);width:26px"></th>'
   html += '</tr></thead><tbody>'
@@ -171,12 +172,30 @@ function renderInvLines() {
       html += `<option value="${p.id}"${l.prod&&l.prod.id===p.id?' selected':''} style="${color}">${p.name} — stock: ${avail} ${p.uom}</option>`
     })
     html += '</select>'
-    if(l.prod) html += `<div style="font-size:9px;margin-top:2px;${stockColor}">Available in stock: <strong>${stockQty} ${l.prod.uom||''}</strong>${stockQty<=0?' ⚠️ OUT OF STOCK':stockQty<5?' ⚠️ LOW STOCK':' ✓'}</div>`
+    if(l.prod) {
+      html += `<div style="font-size:9px;margin-top:2px;${stockColor}">Stock: <strong>${stockQty} ${l.prod.uom||''}</strong>${stockQty<=0?' ⚠️ OUT OF STOCK':stockQty<5?' ⚠️ LOW STOCK':' ✓'}</div>`
+      // Show FIFO batch info
+      const prodBatches = inventoryBatches.filter(b=>b.product_id===l.prod.id&&(parseFloat(b.qty_remaining)||0)>0).sort((a,b)=>a.date<b.date?-1:1)
+      if(prodBatches.length>0) {
+        html += '<div style="font-size:9px;color:#B45309;margin-top:2px">📦 FIFO batches: '
+        html += prodBatches.slice(0,3).map(b=>`${b.purchase_number}: ${parseFloat(b.qty_remaining).toFixed(0)} @ $${parseFloat(b.unit_cost).toFixed(2)}`).join(' → ')
+        html += '</div>'
+      }
+    }
     html += '</td>'
     html += '<td style="padding:4px"><input id="inv-qty-'+i+'" type="number" value="'+(l.qty||1)+'" min="1" step="1" oninput="setInvQty('+i+',this.value)" onchange="setInvQty('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-price-'+i+'" type="number" value="'+(l.price||0)+'" min="0" step="0.01" oninput="setInvPrice('+i+',this.value)" onchange="setInvPrice('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-disc-line-'+i+'" type="number" value="'+(l.disc||0)+'" min="0" max="100" step="1" oninput="setInvDisc('+i+',this.value)" onchange="setInvDisc('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-com-'+i+'" type="number" value="'+(l.com||0)+'" min="0" step="0.01" placeholder="0.00" oninput="setInvCom('+i+',this.value)" onchange="setInvCom('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid #DDD6FE;border-radius:4px;font-size:12px;text-align:right;background:#F5F3FF;color:#7C3AED;font-weight:600"></td>'
+    // COST column — editable, pre-filled from product cost_price
+    const costVal = parseFloat(l.cost)||0
+    const ltUSD = cur==='BRL' ? lt/(parseFloat(el('inv-taxa')?.value)||5.5) : lt
+    const lineProfitUSD = ltUSD - costVal*(parseFloat(l.qty)||0)
+    const lineProfitColor = lineProfitUSD>0?'#16A34A':lineProfitUSD<0?'#DC2626':'var(--tx2)'
+    html += '<td style="padding:4px">'
+    html += '<input id="inv-cost-'+i+'" type="number" value="'+(l.cost||0)+'" min="0" step="0.01" oninput="setInvCost('+i+',this.value)" onchange="setInvCost('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid #FED7AA;border-radius:4px;font-size:12px;text-align:right;background:#FFF7ED;color:#B45309;font-weight:600">'
+    html += '<div style="font-size:9px;margin-top:2px;font-weight:700;color:'+lineProfitColor+'" id="inv-lp-'+i+'">'+(lineProfitUSD>=0?'▲ ':'▼ ')+'$'+Math.abs(lineProfitUSD).toFixed(2)+'</div>'
+    html += '</td>'
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="inv-lt-'+i+'">'+fc(lt,cur)+'</td>'
     html += '<td style="padding:4px 0"><button onclick="rmInvLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
     html += '</tr>'
@@ -195,12 +214,22 @@ function renderInvLines() {
   const totalQty = invLines.reduce((a,l)=>a+(parseFloat(l.qty)||0),0)
   const totalAmt = invLines.reduce((a,l)=>a+(parseFloat(l.qty)||0)*(parseFloat(l.price)||0)*(1-(parseFloat(l.disc)||0)/100),0)
   const totalCom = invLines.reduce((a,l)=>a+(parseFloat(l.com)||0),0)
+  const totalCost = invLines.reduce((a,l)=>a+(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0),0)
+  const taxa2 = parseFloat(el('inv-taxa')?.value)||5.5
+  const totalAmtUSD = cur==='BRL' ? totalAmt/taxa2 : totalAmt
+  const totalProfitUSD = totalAmtUSD - totalCost
+  const tpColor = totalProfitUSD>=0?'#16A34A':'#DC2626'
   html += `<tr style="background:#F9FAFB;border-top:2px solid var(--bdr)">
     <td style="padding:7px 8px;font-size:11px;font-weight:700;color:var(--tx2)">TOTAL</td>
     <td style="padding:7px 4px;text-align:center;font-weight:700;color:var(--acc);font-size:13px">${totalQty}</td>
     <td colspan="2"></td>
     <td style="padding:7px 4px;text-align:right;font-weight:700;color:#7C3AED;font-size:12px">${totalCom>0?'R$'+totalCom.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):''}</td>
+    <td style="padding:7px 4px;text-align:right;font-weight:700;color:#B45309;font-size:12px">$${totalCost.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
     <td style="padding:7px 4px;text-align:right;font-weight:700;color:var(--acc);font-size:13px">${fc(totalAmt,cur)}</td>
+    <td></td>
+  </tr>
+  <tr style="background:${totalProfitUSD>=0?'#F0FDF4':'#FEF2F2'};border-top:1px solid var(--bdr)">
+    <td colspan="6" style="padding:7px 8px;font-size:12px;font-weight:700;color:${tpColor}">${totalProfitUSD>=0?'▲ PROFIT':'▼ LOSS'}: $${Math.abs(totalProfitUSD).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} USD</td>
     <td></td>
   </tr>`
   html += '</tbody></table>'
@@ -214,6 +243,16 @@ window.refreshInvLine = function(i) {
   const qty=parseFloat(l.qty)||0, price=parseFloat(l.price)||0, disc=parseFloat(l.disc)||0
   const lt = qty*price*(1-disc/100)
   const e=el('inv-lt-'+i); if(e) e.textContent=fc(lt,cur)
+  // Update line profit display
+  const taxa = parseFloat(el('inv-taxa')?.value)||5.5
+  const ltUSD = cur==='BRL' ? lt/taxa : lt
+  const cost = parseFloat(l.cost)||0
+  const lineProfit = ltUSD - cost*qty
+  const lp = el('inv-lp-'+i)
+  if(lp) {
+    lp.textContent = (lineProfit>=0?'▲ ':'▼ ')+'$'+Math.abs(lineProfit).toFixed(2)
+    lp.style.color = lineProfit>0?'#16A34A':lineProfit<0?'#DC2626':'var(--tx2)'
+  }
   calcInv()
 }
 
@@ -270,7 +309,20 @@ window.refreshPoLine = function(i) {
 }
 
 // ── GLOBAL LINE UPDATE HELPERS ─────────────────────────────
-window.setInvQty = function(i,v){ invLines[i].qty=parseFloat(v)||0; refreshInvLine(i); updateImeiHint(i) }
+window.setInvQty = function(i,v){
+  invLines[i].qty=parseFloat(v)||0
+  // Recalculate FIFO cost when qty changes
+  if(invLines[i].prod) {
+    const fifo = calcFIFOCost(invLines[i].prod.id, invLines[i].qty)
+    invLines[i].cost = fifo.unitCost || invLines[i].cost
+    invLines[i].fifoBatches = fifo.usedBatches
+    // Update cost input
+    const ci = el('inv-cost-'+i)
+    if(ci) ci.value = invLines[i].cost.toFixed(4)
+  }
+  refreshInvLine(i)
+  updateImeiHint(i)
+}
 window.setInvImei = function(i, val) {
   invLines[i].imei = val
 }
@@ -283,6 +335,7 @@ window.updateImeiHint = function(i) {
   if(ta) ta.rows = Math.max(1, qty)
 }
 window.setInvCom = function(i,v){ invLines[i].com=parseFloat(v)||0; refreshInvLine(i) }
+window.setInvCost = function(i,v){ invLines[i].cost=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvPrice = function(i,v){ invLines[i].price=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvDisc = function(i,v){ invLines[i].disc=parseFloat(v)||0; refreshInvLine(i) }
 window.setPoQty = function(i,v){ poLines[i].qty=parseFloat(v)||0; refreshPoLine(i) }
@@ -301,6 +354,11 @@ window.ilProd = function(i, pid) {
   invLines[i].prod = p || null
   if(p) {
     invLines[i].price = parseFloat(p.sell_price) || 0
+    // Use FIFO cost — calculate from oldest available batch
+    const qty = parseFloat(invLines[i].qty)||1
+    const fifo = calcFIFOCost(p.id, qty)
+    invLines[i].cost = fifo.unitCost || parseFloat(p.cost_price) || 0
+    invLines[i].fifoBatches = fifo.usedBatches
   }
   renderInvLines()
 }
@@ -688,8 +746,8 @@ window.saveInvoice = async function() {
   const taxa = parseFloat(el('inv-taxa')?.value) || 5.50
   // BRL: convert to USD using taxa. USD: use total directly. Other: use standard rates
   const baseAmt = cur === 'BRL' ? (taxa > 0 ? total / taxa : total) : cur === 'USD' ? total : toBase(total, cur)
-  // cogs is sum of qty * cost_price (cost_price is always in USD)
-  const cogsUSD=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(l.prod.cost_price||0)),0)
+  // cogs uses the editable cost per line (confirmed by user) — NOT auto product cost_price
+  const cogsUSD=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod.cost_price||0)),0)
   const cogs=cogsUSD // stored in USD same as base_amount
   const status=el('inv-status').value
   const paid=status==='paid'?baseAmt:status==='partial'?baseAmt*0.5:0
@@ -714,9 +772,12 @@ window.saveInvoice = async function() {
     ;(oldInvLinesBeforeDelete||[]).forEach(ol=>{ oldInvQtyMap[ol.product_id] = (oldInvQtyMap[ol.product_id]||0) + (parseFloat(ol.qty)||0) })
     // Replace lines
     await sb.from('invoice_lines').delete().eq('invoice_id',editId)
-    // Sync IMEI values from DOM before saving (safety net)
-    invLines.forEach((_,i)=>{ const ta=el('inv-imei-'+i); if(ta) invLines[i].imei=ta.value })
-    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0),imei:l.imei||null})))
+    // Sync IMEI and cost values from DOM before saving
+    invLines.forEach((_,i)=>{
+      const ta=el('inv-imei-'+i); if(ta) invLines[i].imei=ta.value
+      const ca=el('inv-cost-'+i); if(ca) invLines[i].cost=parseFloat(ca.value)||invLines[i].cost
+    })
+    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod?.cost_price||0),imei:l.imei||null})))
     // Adjust stock: restore old sold qty, then deduct new sold qty
     for(const l of valid){
       if(!l.prod?.id) continue
@@ -763,9 +824,12 @@ window.saveInvoice = async function() {
     try { localStorage.setItem('djoko_last_taxa', taxaVal) } catch(e){}
     const {data:inv,error}=await sb.from('invoices').insert({number:invNumber,customer_id:cid,customer_name:cust?.name,date:el('inv-date').value,due_date:el('inv-due').value,currency:cur,subtotal:sub,discount_pct:discPct,total,base_amount:baseAmt,cogs,paid_amount:paid,balance:baseAmt-paid,status,notes:el('inv-notes').value,taxa:taxaVal}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save invoice';return toast('Error: '+error.message,false)}
-    // Sync IMEI values from DOM before saving (safety net)
-  invLines.forEach((_,i)=>{ const ta=el('inv-imei-'+i); if(ta) invLines[i].imei=ta.value })
-  await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:l.qty*(l.prod?.cost_price||0),imei:l.imei||null})))
+    // Sync IMEI and cost values from DOM before saving
+  invLines.forEach((_,i)=>{
+    const ta=el('inv-imei-'+i); if(ta) invLines[i].imei=ta.value
+    const ca=el('inv-cost-'+i); if(ca) invLines[i].cost=parseFloat(ca.value)||invLines[i].cost
+  })
+  await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod?.cost_price||0),imei:l.imei||null})))
     for(const l of valid){
     const subQty = parseFloat(l.qty)||0
     const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
@@ -842,7 +906,8 @@ window.editInvoice = async function(id) {
       price: parseFloat(l.unit_price) || 0,
       disc: parseFloat(l.discount_pct) || 0,
       com: parseFloat(l.commission_amt) || 0,
-      imei: l.imei || ''
+      imei: l.imei || '',
+      cost: parseFloat(l.cogs && l.qty ? l.cogs/l.qty : 0) || 0
     }
   })
 
@@ -948,7 +1013,10 @@ window.savePurchase = async function() {
     }
     const {data:po,error}=await sb.from('purchases').insert({number:poNumber,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}).select().single()
     if(error){btn.disabled=false;btn.textContent='Save PO';return toast('Error: '+error.message,false)}
-    await sb.from('purchase_lines').insert(poLines.map(l=>({purchase_id:po.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:parseFloat(l.qty)||0,unit_cost:parseFloat(l.cost)||0,line_total:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0)})))
+    const poLinesData = poLines.map(l=>({purchase_id:po.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:parseFloat(l.qty)||0,unit_cost:parseFloat(l.cost)||0,line_total:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||0)}))
+    await sb.from('purchase_lines').insert(poLinesData)
+    // Create FIFO inventory batches for this purchase
+    await createBatchesFromPO(po.id, po.number, po.date, poLinesData)
     // Update stock using the saved purchase_lines from DB (most reliable)
     const {data:savedLines} = await sb.from('purchase_lines').select('*').eq('purchase_id', po.id)
     if(savedLines && savedLines.length > 0) {
@@ -1821,6 +1889,84 @@ async function checkStockConsistency() {
   }
 }
 
+
+// ── FIFO INVENTORY SYSTEM ─────────────────────────────────
+// When a purchase is saved → create batches (one per line)
+// When an invoice is saved → consume batches FIFO, calculate weighted cost
+
+async function createBatchesFromPO(poId, poNumber, poDate, lines) {
+  const batchRows = lines.map(l => ({
+    product_id: l.product_id,
+    purchase_id: poId,
+    purchase_number: poNumber,
+    date: poDate,
+    qty_received: parseFloat(l.qty)||0,
+    qty_remaining: parseFloat(l.qty)||0,
+    unit_cost: parseFloat(l.unit_cost)||0
+  }))
+  const {error} = await sb.from('inventory_batches').insert(batchRows)
+  if(error) console.error('Batch create error:', error.message)
+  else {
+    // Add to local state
+    batchRows.forEach(b => inventoryBatches.push({...b, id: Date.now()+Math.random()}))
+  }
+}
+
+// Calculate FIFO cost for a product + qty
+// Returns: { totalCost, unitCost, batches: [{batchId, qty, unitCost}] }
+function calcFIFOCost(productId, qtyNeeded) {
+  // Get all batches for this product with remaining qty, sorted FIFO (oldest first)
+  const batches = inventoryBatches
+    .filter(b => b.product_id === productId && (parseFloat(b.qty_remaining)||0) > 0)
+    .sort((a,b) => {
+      if(a.date !== b.date) return a.date < b.date ? -1 : 1
+      return a.created_at < b.created_at ? -1 : 1
+    })
+
+  let remaining = parseFloat(qtyNeeded)||0
+  let totalCost = 0
+  const usedBatches = []
+
+  for(const batch of batches) {
+    if(remaining <= 0) break
+    const available = parseFloat(batch.qty_remaining)||0
+    const take = Math.min(available, remaining)
+    const cost = parseFloat(batch.unit_cost)||0
+    totalCost += take * cost
+    usedBatches.push({ batchId: batch.id, qty: take, unitCost: cost, purchaseNumber: batch.purchase_number })
+    remaining -= take
+  }
+
+  const unitCost = qtyNeeded > 0 ? totalCost / qtyNeeded : 0
+  return { totalCost, unitCost, usedBatches, unfulfilled: remaining }
+}
+
+// Deplete batches after invoice is saved
+async function depleteBatches(usedBatches) {
+  for(const used of usedBatches) {
+    // Find the batch in local state and reduce qty_remaining
+    const batch = inventoryBatches.find(b => b.id === used.batchId)
+    if(batch) {
+      batch.qty_remaining = (parseFloat(batch.qty_remaining)||0) - used.qty
+      // Update in Supabase
+      await sb.from('inventory_batches').update({qty_remaining: batch.qty_remaining}).eq('id', batch.id)
+    }
+  }
+}
+
+// Restore batches when invoice is deleted or edited
+async function restoreBatches(productId, qty, invoiceLineId) {
+  // Simple approach: add qty back to oldest depleted batch
+  const batches = inventoryBatches
+    .filter(b => b.product_id === productId)
+    .sort((a,b) => a.date < b.date ? -1 : 1)
+  if(batches.length > 0) {
+    const oldest = batches[0]
+    oldest.qty_remaining = (parseFloat(oldest.qty_remaining)||0) + qty
+    await sb.from('inventory_batches').update({qty_remaining: oldest.qty_remaining}).eq('id', oldest.id)
+  }
+}
+
 async function loadAll() {
   loading(true)
   try {
@@ -1829,7 +1975,7 @@ async function loadAll() {
     setDb(true,'Connected')
     const {data:sRows}=await sb.from('settings').select('*').limit(1)
     if(sRows?.length){Object.assign(settings,sRows[0]);baseCur=settings.base_currency||'USD';el('base-currency').value=baseCur;el('tco').textContent=settings.company}
-    const [c,s,p,inv,po,rc,py,ex,adj,sadj]=await Promise.all([
+    const [c,s,p,inv,po,rc,py,ex,adj,sadj,batches]=await Promise.all([
       sb.from('customers').select('*').order('created_at'),
       sb.from('suppliers').select('*').order('created_at'),
       sb.from('products').select('*').order('created_at'),
@@ -1839,11 +1985,12 @@ async function loadAll() {
       sb.from('payments').select('*').order('date',{ascending:false}),
       sb.from('expenses').select('*').order('date',{ascending:false}),
       sb.from('stock_adjustments').select('*').order('created_at',{ascending:false}),
-      sb.from('supplier_adjustments').select('*').order('created_at',{ascending:false})
+      sb.from('supplier_adjustments').select('*').order('created_at',{ascending:false}),
+      sb.from('inventory_batches').select('*').order('date',{ascending:true}).order('created_at',{ascending:true})
     ])
     customers=c.data||[]; suppliers=s.data||[]; products=p.data||[]
     invoices=inv.data||[]; purchases=po.data||[]; receipts=rc.data||[]; payments=py.data||[]; expenses=ex.data||[]
-    stockAdjustments=adj.data||[]; supplierAdjustments=sadj.data||[]
+    stockAdjustments=adj.data||[]; supplierAdjustments=sadj.data||[]; inventoryBatches=batches.data||[]
     await computeBalances()
     renderAll(); updateBadges()
     toast('Connected! '+customers.length+' customers, '+invoices.length+' invoices')
