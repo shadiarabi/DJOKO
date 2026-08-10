@@ -842,6 +842,14 @@ window.saveInvoice = async function() {
   }
     invoices.unshift(inv)
     if(cust){cust.totalInvoiced=(cust.totalInvoiced||0)+baseAmt;if(status==='paid')cust.totalPaid=(cust.totalPaid||0)+baseAmt;else cust.balance=(cust.balance||0)+baseAmt}
+    // Deplete FIFO batches and refresh from DB
+    const allUsedBatches = valid.flatMap(l => l.fifoBatches||[])
+    if(allUsedBatches.length > 0) {
+      await depleteBatches(allUsedBatches)
+      // Reload batches from DB so next invoice sees fresh quantities
+      const {data:freshBatches} = await sb.from('inventory_batches').select('*').order('date',{ascending:true}).order('created_at',{ascending:true})
+      if(freshBatches) inventoryBatches = freshBatches
+    }
     btn.disabled=false; btn.textContent='Save invoice'
     renderInvoices(); renderCustomers(); renderStock(); renderDash()
     closeModal('mo-invoice'); saved(); toast('✓ Invoice '+inv.number+' saved — confirmed in database', true); updateBadges()
@@ -1891,8 +1899,8 @@ async function checkStockConsistency() {
 
 
 // ── FIFO INVENTORY SYSTEM ─────────────────────────────────
-// When a purchase is saved → create batches (one per line)
-// When an invoice is saved → consume batches FIFO, calculate weighted cost
+// Fully DB-driven: always reads/writes Supabase directly
+// No reliance on stale in-memory IDs
 
 async function createBatchesFromPO(poId, poNumber, poDate, lines) {
   const batchRows = lines.map(l => ({
@@ -1904,23 +1912,24 @@ async function createBatchesFromPO(poId, poNumber, poDate, lines) {
     qty_remaining: parseFloat(l.qty)||0,
     unit_cost: parseFloat(l.unit_cost)||0
   }))
-  const {error} = await sb.from('inventory_batches').insert(batchRows)
+  const {data, error} = await sb.from('inventory_batches').insert(batchRows).select()
   if(error) console.error('Batch create error:', error.message)
-  else {
-    // Add to local state
-    batchRows.forEach(b => inventoryBatches.push({...b, id: Date.now()+Math.random()}))
+  else if(data) {
+    // Add real DB records (with real IDs) to local state
+    data.forEach(b => inventoryBatches.push(b))
+    console.log('Created', data.length, 'FIFO batches for', poNumber)
   }
 }
 
-// Calculate FIFO cost for a product + qty
-// Returns: { totalCost, unitCost, batches: [{batchId, qty, unitCost}] }
+// Calculate FIFO cost — always from LATEST local state (synced from DB on load)
+// Returns: { totalCost, unitCost, usedBatches: [{batchId, qty, unitCost}] }
 function calcFIFOCost(productId, qtyNeeded) {
-  // Get all batches for this product with remaining qty, sorted FIFO (oldest first)
   const batches = inventoryBatches
     .filter(b => b.product_id === productId && (parseFloat(b.qty_remaining)||0) > 0)
     .sort((a,b) => {
       if(a.date !== b.date) return a.date < b.date ? -1 : 1
-      return a.created_at < b.created_at ? -1 : 1
+      if(a.created_at && b.created_at) return a.created_at < b.created_at ? -1 : 1
+      return 0
     })
 
   let remaining = parseFloat(qtyNeeded)||0
@@ -1941,29 +1950,21 @@ function calcFIFOCost(productId, qtyNeeded) {
   return { totalCost, unitCost, usedBatches, unfulfilled: remaining }
 }
 
-// Deplete batches after invoice is saved
+// Deplete batches in DB after invoice saved — uses real DB ids
 async function depleteBatches(usedBatches) {
   for(const used of usedBatches) {
-    // Find the batch in local state and reduce qty_remaining
-    const batch = inventoryBatches.find(b => b.id === used.batchId)
-    if(batch) {
-      batch.qty_remaining = (parseFloat(batch.qty_remaining)||0) - used.qty
-      // Update in Supabase
-      await sb.from('inventory_batches').update({qty_remaining: batch.qty_remaining}).eq('id', batch.id)
+    if(!used.batchId) continue
+    // Get current qty_remaining fresh from DB
+    const {data:fresh} = await sb.from('inventory_batches').select('qty_remaining').eq('id', used.batchId).single()
+    const currentQty = fresh ? parseFloat(fresh.qty_remaining)||0 : 0
+    const newQty = Math.max(0, currentQty - used.qty)
+    const {error} = await sb.from('inventory_batches').update({qty_remaining: newQty}).eq('id', used.batchId)
+    if(error) console.error('Deplete batch error:', error.message)
+    else {
+      // Update local state too
+      const b = inventoryBatches.find(x => x.id === used.batchId)
+      if(b) b.qty_remaining = newQty
     }
-  }
-}
-
-// Restore batches when invoice is deleted or edited
-async function restoreBatches(productId, qty, invoiceLineId) {
-  // Simple approach: add qty back to oldest depleted batch
-  const batches = inventoryBatches
-    .filter(b => b.product_id === productId)
-    .sort((a,b) => a.date < b.date ? -1 : 1)
-  if(batches.length > 0) {
-    const oldest = batches[0]
-    oldest.qty_remaining = (parseFloat(oldest.qty_remaining)||0) + qty
-    await sb.from('inventory_batches').update({qty_remaining: oldest.qty_remaining}).eq('id', oldest.id)
   }
 }
 
