@@ -173,13 +173,18 @@ function renderInvLines() {
     })
     html += '</select>'
     if(l.prod) {
-      html += `<div style="font-size:9px;margin-top:2px;${stockColor}">Stock: <strong>${stockQty} ${l.prod.uom||''}</strong>${stockQty<=0?' ⚠️ OUT OF STOCK':stockQty<5?' ⚠️ LOW STOCK':' ✓'}</div>`
-      // Show FIFO batch info
-      const prodBatches = inventoryBatches.filter(b=>b.product_id===l.prod.id&&(parseFloat(b.qty_remaining)||0)>0).sort((a,b)=>a.date<b.date?-1:1)
-      if(prodBatches.length>0) {
-        html += '<div style="font-size:9px;color:#B45309;margin-top:2px">📦 FIFO batches: '
-        html += prodBatches.slice(0,3).map(b=>`${b.purchase_number}: ${parseFloat(b.qty_remaining).toFixed(0)} @ $${parseFloat(b.unit_cost).toFixed(2)}`).join(' → ')
-        html += '</div>'
+      html += '<div style="font-size:9px;margin-top:2px;'+stockColor+'">Stock: <strong>'+stockQty+' '+(l.prod.uom||'')+'</strong>'+(stockQty<=0?' ⚠️ OUT OF STOCK':stockQty<5?' ⚠️ LOW STOCK':' ✓')+'</div>'
+      // Show cost source dropdown from available purchase batches
+      const availBatches = l.availableBatches || []
+      if(availBatches.length > 0) {
+        html += '<select id="inv-batch-'+i+'" onchange="setInvBatch('+i+',this.value)" style="width:100%;margin-top:3px;padding:3px 5px;border:1px solid #FED7AA;border-radius:4px;font-size:9px;background:#FFF7ED;color:#B45309">'
+        availBatches.forEach(b => {
+          const selected = l.selectedBatch===b.id?' selected':''
+          html += '<option value="'+b.id+'"'+selected+'>'+b.purchase_number+' ('+b.date+'): '+parseFloat(b.qty_remaining).toFixed(0)+' units @ $'+parseFloat(b.unit_cost).toFixed(2)+'</option>'
+        })
+        html += '</select>'
+      } else {
+        html += '<div style="font-size:9px;color:#DC2626;margin-top:2px">⚠️ No purchase batch found — enter cost manually</div>'
       }
     }
     html += '</td>'
@@ -311,15 +316,6 @@ window.refreshPoLine = function(i) {
 // ── GLOBAL LINE UPDATE HELPERS ─────────────────────────────
 window.setInvQty = function(i,v){
   invLines[i].qty=parseFloat(v)||0
-  // Recalculate FIFO cost when qty changes
-  if(invLines[i].prod) {
-    const fifo = calcFIFOCost(invLines[i].prod.id, invLines[i].qty)
-    invLines[i].cost = fifo.unitCost || invLines[i].cost
-    invLines[i].fifoBatches = fifo.usedBatches
-    // Update cost input
-    const ci = el('inv-cost-'+i)
-    if(ci) ci.value = invLines[i].cost.toFixed(4)
-  }
   refreshInvLine(i)
   updateImeiHint(i)
 }
@@ -336,6 +332,19 @@ window.updateImeiHint = function(i) {
 }
 window.setInvCom = function(i,v){ invLines[i].com=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvCost = function(i,v){ invLines[i].cost=parseFloat(v)||0; refreshInvLine(i) }
+window.setInvBatch = function(i, batchId) {
+  // User selected a specific purchase batch — use its exact cost
+  const batches = invLines[i].availableBatches || []
+  const batch = batches.find(b => b.id === batchId)
+  if(batch) {
+    invLines[i].cost = parseFloat(batch.unit_cost) || 0
+    invLines[i].selectedBatch = batchId
+    // Update cost input
+    const ci = el('inv-cost-'+i)
+    if(ci) ci.value = invLines[i].cost.toFixed(4)
+    refreshInvLine(i)
+  }
+}
 window.setInvPrice = function(i,v){ invLines[i].price=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvDisc = function(i,v){ invLines[i].disc=parseFloat(v)||0; refreshInvLine(i) }
 window.setPoQty = function(i,v){ poLines[i].qty=parseFloat(v)||0; refreshPoLine(i) }
@@ -349,16 +358,28 @@ window.rmPoLine = function(i){ poLines.splice(i,1); renderPoLines() }
 window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPoLines() }
 
 // ── INVOICE LINE PRODUCT SELECTED ─────────────────────────
-window.ilProd = function(i, pid) {
+window.ilProd = async function(i, pid) {
   const p = products.find(x => x.id === pid)
   invLines[i].prod = p || null
   if(p) {
     invLines[i].price = parseFloat(p.sell_price) || 0
-    // Use FIFO cost — calculate from oldest available batch
-    const qty = parseFloat(invLines[i].qty)||1
-    const fifo = calcFIFOCost(p.id, qty)
-    invLines[i].cost = fifo.unitCost || parseFloat(p.cost_price) || 0
-    invLines[i].fifoBatches = fifo.usedBatches
+    invLines[i].cost = 0
+    invLines[i].fifoBatches = []
+    // Fetch available purchase batches directly from DB
+    const {data:batches} = await sb
+      .from('inventory_batches')
+      .select('*')
+      .eq('product_id', pid)
+      .gt('qty_remaining', 0)
+      .order('date', {ascending: true})
+    invLines[i].availableBatches = batches || []
+    // Auto-select oldest batch (FIFO default)
+    if(batches && batches.length > 0) {
+      invLines[i].cost = parseFloat(batches[0].unit_cost) || 0
+      invLines[i].selectedBatch = batches[0].id
+    } else {
+      invLines[i].cost = parseFloat(p.cost_price) || 0
+    }
   }
   renderInvLines()
 }
@@ -746,9 +767,11 @@ window.saveInvoice = async function() {
   const taxa = parseFloat(el('inv-taxa')?.value) || 5.50
   // BRL: convert to USD using taxa. USD: use total directly. Other: use standard rates
   const baseAmt = cur === 'BRL' ? (taxa > 0 ? total / taxa : total) : cur === 'USD' ? total : toBase(total, cur)
-  // cogs uses the editable cost per line (confirmed by user) — NOT auto product cost_price
-  const cogsUSD=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod.cost_price||0)),0)
-  const cogs=cogsUSD // stored in USD same as base_amount
+  // Sync cost from DOM before calculating (user may have typed directly)
+  valid.forEach((_,idx)=>{ const ci=el('inv-cost-'+idx); if(ci) valid[idx].cost=parseFloat(ci.value)||valid[idx].cost })
+  // COGS = sum of qty × confirmed cost per line (from selected purchase batch)
+  const cogsUSD=valid.reduce((a,l)=>a+((parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod?.cost_price||0)),0)
+  const cogs=cogsUSD
   const status=el('inv-status').value
   const paid=status==='paid'?baseAmt:status==='partial'?baseAmt*0.5:0
   const cust=customers.find(c=>c.id===cid)
@@ -842,14 +865,22 @@ window.saveInvoice = async function() {
   }
     invoices.unshift(inv)
     if(cust){cust.totalInvoiced=(cust.totalInvoiced||0)+baseAmt;if(status==='paid')cust.totalPaid=(cust.totalPaid||0)+baseAmt;else cust.balance=(cust.balance||0)+baseAmt}
-    // Deplete FIFO batches and refresh from DB
-    const allUsedBatches = valid.flatMap(l => l.fifoBatches||[])
-    if(allUsedBatches.length > 0) {
-      await depleteBatches(allUsedBatches)
-      // Reload batches from DB so next invoice sees fresh quantities
-      const {data:freshBatches} = await sb.from('inventory_batches').select('*').order('date',{ascending:true}).order('created_at',{ascending:true})
-      if(freshBatches) inventoryBatches = freshBatches
+    // Deplete the SELECTED batch for each line
+    for(const l of valid) {
+      if(l.selectedBatch) {
+        const qty = parseFloat(l.qty)||0
+        const {data:fresh} = await sb.from('inventory_batches').select('qty_remaining').eq('id',l.selectedBatch).single()
+        if(fresh) {
+          const newQty = Math.max(0, (parseFloat(fresh.qty_remaining)||0) - qty)
+          await sb.from('inventory_batches').update({qty_remaining:newQty}).eq('id',l.selectedBatch)
+          const b = inventoryBatches.find(x=>x.id===l.selectedBatch)
+          if(b) b.qty_remaining = newQty
+        }
+      }
     }
+    // Reload batches from DB
+    const {data:freshBatches} = await sb.from('inventory_batches').select('*').order('date',{ascending:true}).order('created_at',{ascending:true})
+    if(freshBatches) inventoryBatches = freshBatches
     btn.disabled=false; btn.textContent='Save invoice'
     renderInvoices(); renderCustomers(); renderStock(); renderDash()
     closeModal('mo-invoice'); saved(); toast('✓ Invoice '+inv.number+' saved — confirmed in database', true); updateBadges()
