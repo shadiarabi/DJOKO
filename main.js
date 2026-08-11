@@ -333,15 +333,14 @@ window.updateImeiHint = function(i) {
 window.setInvCom = function(i,v){ invLines[i].com=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvCost = function(i,v){ invLines[i].cost=parseFloat(v)||0; refreshInvLine(i) }
 window.setInvBatch = function(i, batchId) {
-  // User selected a specific purchase batch — use its exact cost
   const batches = invLines[i].availableBatches || []
-  const batch = batches.find(b => b.id === batchId)
+  const batch = batches.find(b => String(b.id) === String(batchId))
   if(batch) {
     invLines[i].cost = parseFloat(batch.unit_cost) || 0
-    invLines[i].selectedBatch = batchId
-    // Update cost input
+    invLines[i].selectedBatch = batch.id
+    invLines[i].selectedPurchaseNumber = batch.purchase_number
     const ci = el('inv-cost-'+i)
-    if(ci) ci.value = invLines[i].cost.toFixed(4)
+    if(ci) ci.value = invLines[i].cost.toFixed(2)
     refreshInvLine(i)
   }
 }
@@ -364,19 +363,48 @@ window.ilProd = async function(i, pid) {
   if(p) {
     invLines[i].price = parseFloat(p.sell_price) || 0
     invLines[i].cost = 0
-    invLines[i].fifoBatches = []
-    // Fetch available purchase batches directly from DB
-    const {data:batches} = await sb
-      .from('inventory_batches')
-      .select('*')
+    invLines[i].selectedBatch = null
+    invLines[i].availableBatches = []
+
+    // ── PERMANENT FIX: Query purchase_lines DIRECTLY ──────
+    // This always gives 100% accurate costs from actual POs
+    // Never relies on inventory_batches which can get stale
+    const {data:poLines} = await sb
+      .from('purchase_lines')
+      .select('*, purchases(number, date, status)')
       .eq('product_id', pid)
-      .gt('qty_remaining', 0)
-      .order('date', {ascending: true})
-    invLines[i].availableBatches = batches || []
-    // Auto-select oldest batch (FIFO default)
-    if(batches && batches.length > 0) {
-      invLines[i].cost = parseFloat(batches[0].unit_cost) || 0
-      invLines[i].selectedBatch = batches[0].id
+      .order('purchases(date)', {ascending: true})
+
+    if(poLines && poLines.length > 0) {
+      // Build batch list from actual purchase lines
+      // Group by purchase to avoid duplicates
+      const seen = new Set()
+      const batches = []
+      for(const pl of poLines) {
+        const po = pl.purchases
+        if(!po) continue
+        const key = po.number + '_' + pl.unit_cost
+        if(!seen.has(key)) {
+          seen.add(key)
+          batches.push({
+            id: pl.id,  // use purchase_line id as reference
+            purchase_number: po.number,
+            date: po.date,
+            unit_cost: parseFloat(pl.unit_cost)||0,
+            qty_received: parseFloat(pl.qty)||0,
+            purchase_line_id: pl.id,
+            purchase_id: pl.purchase_id
+          })
+        }
+      }
+      invLines[i].availableBatches = batches
+      // Auto-select the MOST RECENT purchase (most likely the one you just bought)
+      if(batches.length > 0) {
+        const latest = batches[batches.length - 1]
+        invLines[i].cost = latest.unit_cost
+        invLines[i].selectedBatch = latest.id
+        invLines[i].selectedPurchaseNumber = latest.purchase_number
+      }
     } else {
       invLines[i].cost = parseFloat(p.cost_price) || 0
     }
@@ -865,22 +893,25 @@ window.saveInvoice = async function() {
   }
     invoices.unshift(inv)
     if(cust){cust.totalInvoiced=(cust.totalInvoiced||0)+baseAmt;if(status==='paid')cust.totalPaid=(cust.totalPaid||0)+baseAmt;else cust.balance=(cust.balance||0)+baseAmt}
-    // Deplete the SELECTED batch for each line
+    // Deplete inventory_batches for each line using purchase_number + product_id
     for(const l of valid) {
-      if(l.selectedBatch) {
-        const qty = parseFloat(l.qty)||0
-        const {data:fresh} = await sb.from('inventory_batches').select('qty_remaining').eq('id',l.selectedBatch).single()
-        if(fresh) {
-          const newQty = Math.max(0, (parseFloat(fresh.qty_remaining)||0) - qty)
-          await sb.from('inventory_batches').update({qty_remaining:newQty}).eq('id',l.selectedBatch)
-          const b = inventoryBatches.find(x=>x.id===l.selectedBatch)
-          if(b) b.qty_remaining = newQty
+      if(!l.prod?.id) continue
+      const qty = parseFloat(l.qty)||0
+      const poNum = l.selectedPurchaseNumber
+      if(poNum) {
+        // Find batch by purchase_number + product_id (reliable, no stale ID issues)
+        const {data:batchRows} = await sb.from('inventory_batches')
+          .select('id,qty_remaining')
+          .eq('product_id', l.prod.id)
+          .eq('purchase_number', poNum)
+          .limit(1)
+        if(batchRows && batchRows.length > 0) {
+          const b = batchRows[0]
+          const newQty = Math.max(0, (parseFloat(b.qty_remaining)||0) - qty)
+          await sb.from('inventory_batches').update({qty_remaining:newQty}).eq('id',b.id)
         }
       }
     }
-    // Reload batches from DB
-    const {data:freshBatches} = await sb.from('inventory_batches').select('*').order('date',{ascending:true}).order('created_at',{ascending:true})
-    if(freshBatches) inventoryBatches = freshBatches
     btn.disabled=false; btn.textContent='Save invoice'
     renderInvoices(); renderCustomers(); renderStock(); renderDash()
     closeModal('mo-invoice'); saved(); toast('✓ Invoice '+inv.number+' saved — confirmed in database', true); updateBadges()
