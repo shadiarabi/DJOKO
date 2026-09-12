@@ -1871,6 +1871,280 @@ window.searchIMEI = async function(query) {
   }
 }
 
+
+// ── PERIOD ANALYSIS REPORT ────────────────────────────────
+window.clearPeriodAnalysis = function() {
+  if(el('period-from')) el('period-from').value = ''
+  if(el('period-to')) el('period-to').value = ''
+  el('period-report-content').innerHTML = '<div style="text-align:center;padding:40px;color:var(--tx2);font-size:13px">Select a date range and click Generate Report</div>'
+}
+
+window.runPeriodAnalysis = async function() {
+  const from = el('period-from')?.value
+  const to = el('period-to')?.value
+  if(!from || !to) return toast('Please select both From and To dates', false)
+
+  const content = el('period-report-content')
+  content.innerHTML = '<div style="text-align:center;padding:40px;font-size:13px;color:var(--tx2)">⏳ Generating report...</div>'
+
+  try {
+    // Fetch invoice lines for period
+    const {data:invLines} = await sb.from('invoice_lines')
+      .select('*, invoices(number,date,customer_name,currency,taxa,status)')
+      .gte('invoices.date', from)
+      .lte('invoices.date', to)
+      .not('invoices', 'is', null)
+
+    // Fetch purchase lines for period
+    const {data:poLines} = await sb.from('purchase_lines')
+      .select('*, purchases(number,date,supplier_name,currency,status)')
+      .gte('purchases.date', from)
+      .lte('purchases.date', to)
+      .not('purchases', 'is', null)
+
+    // Filter invoices and purchases for period
+    const filtInv = invoices.filter(i => i.date >= from && i.date <= to)
+    const filtPO = purchases.filter(p => p.date >= from && p.date <= to)
+    const filtExp = expenses.filter(e => e.date >= from && e.date <= to)
+
+    // ── SALES SUMMARY ──
+    const totalRevenue = filtInv.reduce((a,i) => a + (parseFloat(i.base_amount)||0), 0)
+    const totalCOGS = filtInv.reduce((a,i) => a + (parseFloat(i.cogs)||0), 0)
+    const totalProfit = totalRevenue - totalCOGS
+    const totalExpenses = filtExp.reduce((a,e) => a + (parseFloat(e.base_amount)||0), 0)
+    const netProfit = totalProfit - totalExpenses
+
+    // ── PURCHASE SUMMARY ──
+    const totalPurchased = filtPO.reduce((a,p) => a + (parseFloat(p.base_amount)||0), 0)
+
+    // ── SALES BY PRODUCT ──
+    const salesByProduct = {}
+    const validInvLines = (invLines||[]).filter(l => l.invoices && l.invoices.date >= from && l.invoices.date <= to)
+    validInvLines.forEach(l => {
+      const name = l.product_name || 'Unknown'
+      if(!salesByProduct[name]) salesByProduct[name] = {qty:0, revenue:0, cogs:0}
+      salesByProduct[name].qty += parseFloat(l.qty)||0
+      const lineRevUSD = l.invoices.currency==='BRL'
+        ? (l.line_total||0) / (parseFloat(l.invoices.taxa)||5.5)
+        : (l.line_total||0)
+      salesByProduct[name].revenue += lineRevUSD
+      salesByProduct[name].cogs += parseFloat(l.cogs)||0
+    })
+
+    // ── PURCHASES BY PRODUCT ──
+    const purchByProduct = {}
+    const validPOLines = (poLines||[]).filter(l => l.purchases && l.purchases.date >= from && l.purchases.date <= to)
+    validPOLines.forEach(l => {
+      const name = l.product_name || 'Unknown'
+      if(!purchByProduct[name]) purchByProduct[name] = {qty:0, total:0}
+      purchByProduct[name].qty += parseFloat(l.qty)||0
+      purchByProduct[name].total += parseFloat(l.line_total)||0
+    })
+
+    // ── SALES BY CUSTOMER ──
+    const salesByCust = {}
+    filtInv.forEach(i => {
+      const name = i.customer_name || 'Unknown'
+      if(!salesByCust[name]) salesByCust[name] = {invoices:0, revenue:0, profit:0}
+      salesByCust[name].invoices++
+      salesByCust[name].revenue += parseFloat(i.base_amount)||0
+      salesByCust[name].profit += (parseFloat(i.base_amount)||0) - (parseFloat(i.cogs)||0)
+    })
+
+    // ── PURCHASES BY SUPPLIER ──
+    const purchBySupp = {}
+    filtPO.forEach(p => {
+      const name = p.supplier_name || 'Unknown'
+      if(!purchBySupp[name]) purchBySupp[name] = {orders:0, total:0}
+      purchBySupp[name].orders++
+      purchBySupp[name].total += parseFloat(p.base_amount)||0
+    })
+
+    // ── BUILD HTML ──
+    const profitColor = totalProfit>=0?'#16A34A':'#DC2626'
+    const netColor = netProfit>=0?'#16A34A':'#DC2626'
+
+    let html = ''
+
+    // Header
+    html += '<div style="background:var(--acc);color:#fff;padding:14px 16px;border-radius:8px;margin-bottom:16px">'
+    html += '<div style="font-size:16px;font-weight:800">📊 Period Analysis Report</div>'
+    html += '<div style="font-size:12px;opacity:0.85;margin-top:2px">'+from+' to '+to+'</div>'
+    html += '</div>'
+
+    // KPI cards
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px">'
+    const kpis = [
+      {label:'Total Revenue', value:fmt(totalRevenue), color:'#2563EB', icon:'💰'},
+      {label:'Total COGS', value:fmt(totalCOGS), color:'#B45309', icon:'📦'},
+      {label:'Gross Profit', value:fmt(totalProfit), color:profitColor, icon:totalProfit>=0?'▲':'▼'},
+      {label:'Expenses', value:fmt(totalExpenses), color:'#DC2626', icon:'💸'},
+      {label:'Net Profit', value:fmt(netProfit), color:netColor, icon:netProfit>=0?'✅':'❌'},
+      {label:'Total Purchased', value:fmt(totalPurchased), color:'#7C3AED', icon:'🛒'},
+      {label:'Invoices', value:filtInv.length, color:'#0891B2', icon:'🧾'},
+      {label:'Purchase Orders', value:filtPO.length, color:'#059669', icon:'📋'},
+    ]
+    kpis.forEach(k => {
+      html += '<div class="card" style="padding:12px;text-align:center">'
+      html += '<div style="font-size:18px;margin-bottom:4px">'+k.icon+'</div>'
+      html += '<div style="font-size:18px;font-weight:800;color:'+k.color+'">'+k.value+'</div>'
+      html += '<div style="font-size:10px;color:var(--tx2);margin-top:2px">'+k.label+'</div>'
+      html += '</div>'
+    })
+    html += '</div>'
+
+    // Sales by Product
+    const sortedSales = Object.entries(salesByProduct).sort((a,b)=>b[1].qty-a[1].qty)
+    if(sortedSales.length > 0) {
+      html += '<div class="card" style="margin-bottom:14px">'
+      html += '<div class="ch"><div class="ct">📱 Sales by Product</div><div style="font-size:11px;color:var(--tx2)">'+from+' – '+to+'</div></div>'
+      html += '<div class="tw"><table><thead><tr>'
+      html += '<th>Product</th><th style="text-align:right">Units Sold</th><th style="text-align:right">Revenue (USD)</th><th style="text-align:right">Cost (USD)</th><th style="text-align:right">Profit</th><th style="text-align:right">Margin</th>'
+      html += '</tr></thead><tbody>'
+      let totQty=0,totRev=0,totCost=0
+      sortedSales.forEach(([name,d])=>{
+        const profit = d.revenue - d.cogs
+        const margin = d.revenue>0?(profit/d.revenue*100):0
+        const pc = profit>=0?'#16A34A':'#DC2626'
+        totQty+=d.qty; totRev+=d.revenue; totCost+=d.cogs
+        html += '<tr>'
+        html += '<td style="font-weight:600">'+name+'</td>'
+        html += '<td style="text-align:right;font-weight:700;color:var(--acc)">'+d.qty+' pcs</td>'
+        html += '<td style="text-align:right">'+fmt(d.revenue)+'</td>'
+        html += '<td style="text-align:right;color:#B45309">'+fmt(d.cogs)+'</td>'
+        html += '<td style="text-align:right;font-weight:700;color:'+pc+'">'+fmt(profit)+'</td>'
+        html += '<td style="text-align:right;color:'+pc+'">'+margin.toFixed(1)+'%</td>'
+        html += '</tr>'
+      })
+      const totProfit = totRev - totCost
+      html += '<tr style="background:#F9FAFB;font-weight:800;border-top:2px solid var(--bdr)">'
+      html += '<td>TOTAL</td>'
+      html += '<td style="text-align:right;color:var(--acc)">'+totQty+' pcs</td>'
+      html += '<td style="text-align:right">'+fmt(totRev)+'</td>'
+      html += '<td style="text-align:right;color:#B45309">'+fmt(totCost)+'</td>'
+      html += '<td style="text-align:right;color:'+(totProfit>=0?'#16A34A':'#DC2626')+'">'+fmt(totProfit)+'</td>'
+      html += '<td style="text-align:right;color:'+(totProfit>=0?'#16A34A':'#DC2626')+'">'+(totRev>0?(totProfit/totRev*100).toFixed(1)+'%':'0%')+'</td>'
+      html += '</tr>'
+      html += '</tbody></table></div></div>'
+    }
+
+    // Purchases by Product
+    const sortedPurch = Object.entries(purchByProduct).sort((a,b)=>b[1].qty-a[1].qty)
+    if(sortedPurch.length > 0) {
+      html += '<div class="card" style="margin-bottom:14px">'
+      html += '<div class="ch"><div class="ct">🛒 Purchases by Product</div><div style="font-size:11px;color:var(--tx2)">'+from+' – '+to+'</div></div>'
+      html += '<div class="tw"><table><thead><tr>'
+      html += '<th>Product</th><th style="text-align:right">Units Bought</th><th style="text-align:right">Total Cost (USD)</th><th style="text-align:right">Avg Cost/Unit</th>'
+      html += '</tr></thead><tbody>'
+      let ptotQty=0,ptotCost=0
+      sortedPurch.forEach(([name,d])=>{
+        const avg = d.qty>0?d.total/d.qty:0
+        ptotQty+=d.qty; ptotCost+=d.total
+        html += '<tr>'
+        html += '<td style="font-weight:600">'+name+'</td>'
+        html += '<td style="text-align:right;font-weight:700;color:var(--acc)">'+d.qty+' pcs</td>'
+        html += '<td style="text-align:right">'+fmt(d.total)+'</td>'
+        html += '<td style="text-align:right;color:#B45309">'+fmt(avg)+'/unit</td>'
+        html += '</tr>'
+      })
+      html += '<tr style="background:#F9FAFB;font-weight:800;border-top:2px solid var(--bdr)">'
+      html += '<td>TOTAL</td>'
+      html += '<td style="text-align:right;color:var(--acc)">'+ptotQty+' pcs</td>'
+      html += '<td style="text-align:right">'+fmt(ptotCost)+'</td>'
+      html += '<td style="text-align:right;color:#B45309">'+(ptotQty>0?fmt(ptotCost/ptotQty)+'/unit':'—')+'</td>'
+      html += '</tr>'
+      html += '</tbody></table></div></div>'
+    }
+
+    // Sales by Customer
+    const sortedCust = Object.entries(salesByCust).sort((a,b)=>b[1].revenue-a[1].revenue)
+    if(sortedCust.length > 0) {
+      html += '<div class="card" style="margin-bottom:14px">'
+      html += '<div class="ch"><div class="ct">👥 Sales by Customer</div></div>'
+      html += '<div class="tw"><table><thead><tr>'
+      html += '<th>Customer</th><th style="text-align:right">Invoices</th><th style="text-align:right">Revenue (USD)</th><th style="text-align:right">Profit</th>'
+      html += '</tr></thead><tbody>'
+      sortedCust.forEach(([name,d])=>{
+        const pc = d.profit>=0?'#16A34A':'#DC2626'
+        html += '<tr>'
+        html += '<td style="font-weight:600">'+name+'</td>'
+        html += '<td style="text-align:right">'+d.invoices+'</td>'
+        html += '<td style="text-align:right">'+fmt(d.revenue)+'</td>'
+        html += '<td style="text-align:right;font-weight:700;color:'+pc+'">'+fmt(d.profit)+'</td>'
+        html += '</tr>'
+      })
+      html += '</tbody></table></div></div>'
+    }
+
+    // Purchases by Supplier
+    const sortedSupp = Object.entries(purchBySupp).sort((a,b)=>b[1].total-a[1].total)
+    if(sortedSupp.length > 0) {
+      html += '<div class="card" style="margin-bottom:14px">'
+      html += '<div class="ch"><div class="ct">🏭 Purchases by Supplier</div></div>'
+      html += '<div class="tw"><table><thead><tr>'
+      html += '<th>Supplier</th><th style="text-align:right">Orders</th><th style="text-align:right">Total (USD)</th>'
+      html += '</tr></thead><tbody>'
+      sortedSupp.forEach(([name,d])=>{
+        html += '<tr>'
+        html += '<td style="font-weight:600">'+name+'</td>'
+        html += '<td style="text-align:right">'+d.orders+'</td>'
+        html += '<td style="text-align:right;font-weight:700">'+fmt(d.total)+'</td>'
+        html += '</tr>'
+      })
+      html += '</tbody></table></div></div>'
+    }
+
+    // Invoice list
+    if(filtInv.length > 0) {
+      html += '<div class="card" style="margin-bottom:14px">'
+      html += '<div class="ch"><div class="ct">🧾 Invoice Detail</div></div>'
+      html += '<div class="tw"><table><thead><tr>'
+      html += '<th>INV #</th><th>Customer</th><th>Date</th><th>Currency</th><th style="text-align:right">Total</th><th style="text-align:right">Revenue USD</th><th style="text-align:right">Profit</th><th>Status</th>'
+      html += '</tr></thead><tbody>'
+      filtInv.forEach(i => {
+        const profit = (parseFloat(i.base_amount)||0) - (parseFloat(i.cogs)||0)
+        const pc = profit>=0?'#16A34A':'#DC2626'
+        html += '<tr>'
+        html += '<td style="font-weight:700;color:var(--acc)">'+i.number+'</td>'
+        html += '<td>'+i.customer_name+'</td>'
+        html += '<td>'+i.date+'</td>'
+        html += '<td><span class="badge bcur">'+i.currency+'</span></td>'
+        html += '<td style="text-align:right">'+fc(i.total,i.currency)+'</td>'
+        html += '<td style="text-align:right">'+fmt(i.base_amount)+'</td>'
+        html += '<td style="text-align:right;font-weight:700;color:'+pc+'">'+fmt(profit)+'</td>'
+        html += '<td>'+sbadge(i.status)+'</td>'
+        html += '</tr>'
+      })
+      html += '</tbody></table></div></div>'
+    }
+
+    // PO list
+    if(filtPO.length > 0) {
+      html += '<div class="card" style="margin-bottom:14px">'
+      html += '<div class="ch"><div class="ct">📋 Purchase Order Detail</div></div>'
+      html += '<div class="tw"><table><thead><tr>'
+      html += '<th>PO #</th><th>Supplier</th><th>Date</th><th style="text-align:right">Total (USD)</th><th>Status</th>'
+      html += '</tr></thead><tbody>'
+      filtPO.forEach(p => {
+        html += '<tr>'
+        html += '<td style="font-weight:700;color:#7C3AED">'+p.number+'</td>'
+        html += '<td>'+p.supplier_name+'</td>'
+        html += '<td>'+p.date+'</td>'
+        html += '<td style="text-align:right;font-weight:700">'+fmt(p.base_amount)+'</td>'
+        html += '<td>'+sbadge(p.status)+'</td>'
+        html += '</tr>'
+      })
+      html += '</tbody></table></div></div>'
+    }
+
+    content.innerHTML = html
+
+  } catch(err) {
+    content.innerHTML = '<div style="color:red;padding:20px">Error: '+err.message+'</div>'
+    console.error(err)
+  }
+}
+
 window.exportCSV = function() {
   const h='Code,Product,Category,Qty,Cost,Price,Value\n'
   const r=products.map(p=>`"${p.code}","${p.name}","${p.category}",${p.qty},${p.cost_price},${p.sell_price},${p.qty*p.cost_price}`).join('\n')
