@@ -326,7 +326,7 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
 
 <!-- REPORTS -->
 <div class="page" id="page-reports">
-  <div class="ph"><div><div class="pt">Financial Reports</div><div class="ps">Balance sheet, P&amp;L and ageing</div></div>
+  <div class="ph"><div><div class="pt">Financial Reports</div><div class="ps">Balance sheet, P&L and ageing</div></div>
   <button class="btn suc" onclick="printReport()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>Print / PDF</button></div>
   <div class="tabs">
     <div class="tab active" onclick="rptTab(this,'rpt-bs')">Balance Sheet</div>
@@ -334,10 +334,27 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
     <div class="tab" onclick="rptTab(this,'rpt-ar')">Receivables</div>
     <div class="tab" onclick="rptTab(this,'rpt-ap')">Payables</div>
     <div class="tab" onclick="rptTab(this,'rpt-trial')">Trial Balance</div>
+    <div class="tab" onclick="rptTab(this,'rpt-period')">📊 Period Analysis</div>
   </div>
   <div id="rpt-bs"></div><div id="rpt-pl" style="display:none"></div>
   <div id="rpt-ar" style="display:none"></div><div id="rpt-ap" style="display:none"></div>
   <div id="rpt-trial" style="display:none"></div>
+  <div id="rpt-period" style="display:none">
+    <!-- Date filter -->
+    <div class="card" style="margin-bottom:14px">
+      <div style="padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:12px;font-weight:700;color:var(--tx2)">Period:</span>
+        <input type="date" id="period-from" style="padding:5px 8px;border:1px solid var(--bdr2);border-radius:5px;font-size:12px;color:var(--txt);background:var(--inp)">
+        <span style="font-size:12px;color:var(--tx2)">to</span>
+        <input type="date" id="period-to" style="padding:5px 8px;border:1px solid var(--bdr2);border-radius:5px;font-size:12px;color:var(--txt);background:var(--inp)">
+        <button onclick="runPeriodAnalysis()" class="btn pri" style="font-size:12px">🔍 Generate Report</button>
+        <button onclick="clearPeriodAnalysis()" style="background:#F3F4F6;border:1px solid var(--bdr);border-radius:5px;padding:5px 10px;font-size:11px;cursor:pointer;color:var(--tx2)">✕ Clear</button>
+      </div>
+    </div>
+    <div id="period-report-content">
+      <div style="text-align:center;padding:40px;color:var(--tx2);font-size:13px">Select a date range and click Generate Report</div>
+    </div>
+  </div>
 </div>
 
 </div><!-- /main -->
