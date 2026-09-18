@@ -367,17 +367,19 @@ window.ilProd = async function(i, pid) {
     invLines[i].availableBatches = []
 
     // ── PERMANENT FIX: Query purchase_lines DIRECTLY ──────
-    // This always gives 100% accurate costs from actual POs
-    // Never relies on inventory_batches which can get stale
     const {data:poLines} = await sb
       .from('purchase_lines')
       .select('*, purchases(number, date, status)')
       .eq('product_id', pid)
-      .order('purchases(date)', {ascending: true})
 
     if(poLines && poLines.length > 0) {
-      // Build batch list from actual purchase lines
-      // Group by purchase to avoid duplicates
+      // Sort by purchase date in JS (avoids Supabase nested order issues)
+      poLines.sort((a,b) => {
+        const da = a.purchases?.date || ''
+        const db = b.purchases?.date || ''
+        return da < db ? -1 : da > db ? 1 : 0
+      })
+      // Group by PO+cost to avoid duplicates
       const seen = new Set()
       const batches = []
       for(const pl of poLines) {
@@ -387,7 +389,7 @@ window.ilProd = async function(i, pid) {
         if(!seen.has(key)) {
           seen.add(key)
           batches.push({
-            id: pl.id,  // use purchase_line id as reference
+            id: pl.id,
             purchase_number: po.number,
             date: po.date,
             unit_cost: parseFloat(pl.unit_cost)||0,
@@ -398,7 +400,7 @@ window.ilProd = async function(i, pid) {
         }
       }
       invLines[i].availableBatches = batches
-      // Auto-select the MOST RECENT purchase (most likely the one you just bought)
+      // Auto-select MOST RECENT purchase
       if(batches.length > 0) {
         const latest = batches[batches.length - 1]
         invLines[i].cost = latest.unit_cost
@@ -979,9 +981,49 @@ window.editInvoice = async function(id) {
       disc: parseFloat(l.discount_pct) || 0,
       com: parseFloat(l.commission_amt) || 0,
       imei: l.imei || '',
-      cost: parseFloat(l.cogs && l.qty ? l.cogs/l.qty : 0) || 0
+      cost: parseFloat(l.cogs && l.qty ? l.cogs/l.qty : 0) || 0,
+      availableBatches: [],
+      selectedBatch: null,
+      selectedPurchaseNumber: null
     }
   })
+
+  // Load purchase batches for each line (so cost dropdown works on edit)
+  for(let idx=0; idx<invLines.length; idx++) {
+    const line = invLines[idx]
+    if(!line.prod?.id) continue
+    const {data:poLines} = await sb.from('purchase_lines')
+      .select('*, purchases(number, date, status)')
+      .eq('product_id', line.prod.id)
+    if(poLines && poLines.length > 0) {
+      poLines.sort((a,b)=>(a.purchases?.date||'')<(b.purchases?.date||'')?-1:1)
+      const seen = new Set()
+      const batches = []
+      for(const pl of poLines) {
+        const po = pl.purchases
+        if(!po) continue
+        const key = po.number+'_'+pl.unit_cost
+        if(!seen.has(key)) {
+          seen.add(key)
+          batches.push({id:pl.id, purchase_number:po.number, date:po.date,
+            unit_cost:parseFloat(pl.unit_cost)||0, qty_received:parseFloat(pl.qty)||0,
+            purchase_line_id:pl.id, purchase_id:pl.purchase_id})
+        }
+      }
+      invLines[idx].availableBatches = batches
+      // Find the batch matching the saved cost
+      const savedCost = invLines[idx].cost
+      const match = batches.find(b => Math.abs(b.unit_cost - savedCost) < 0.01)
+      if(match) {
+        invLines[idx].selectedBatch = match.id
+        invLines[idx].selectedPurchaseNumber = match.purchase_number
+      } else if(batches.length > 0) {
+        const latest = batches[batches.length-1]
+        invLines[idx].selectedBatch = latest.id
+        invLines[idx].selectedPurchaseNumber = latest.purchase_number
+      }
+    }
+  }
 
   // Ensure at least one line
   if(!invLines.length) invLines = [{prod:null, qty:1, price:0, disc:0}]
