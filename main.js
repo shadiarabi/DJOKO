@@ -146,13 +146,14 @@ window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPo
 // ── RENDER INVOICE LINES ──────────────────────────────────
 function renderInvLines() {
   const cur = el('inv-cur')?.value || baseCur
+  const taxa = parseFloat(el('inv-taxa')?.value)||5.5
   let html = '<table style="width:100%;border-collapse:collapse;margin-bottom:4px"><thead><tr style="background:#F9FAFB">'
   html += '<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr)">PRODUCT</th>'
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:65px">QTY</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">PRICE</th>'
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:55px">DISC%</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#7C3AED;border-bottom:1px solid var(--bdr);width:90px">COM (R$)</th>'
-  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#B45309;border-bottom:1px solid var(--bdr);width:85px">COST $</th>'
+  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#B45309;border-bottom:1px solid var(--bdr);width:120px">COST $ / MARGIN</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">TOTAL</th>'
   html += '<th style="border-bottom:1px solid var(--bdr);width:26px"></th>'
   html += '</tr></thead><tbody>'
@@ -177,14 +178,17 @@ function renderInvLines() {
       // Show cost source dropdown from available purchase batches
       const availBatches = l.availableBatches || []
       if(availBatches.length > 0) {
-        html += '<select id="inv-batch-'+i+'" onchange="setInvBatch('+i+',this.value)" style="width:100%;margin-top:3px;padding:3px 5px;border:1px solid #FED7AA;border-radius:4px;font-size:9px;background:#FFF7ED;color:#B45309">'
-        availBatches.forEach(b => {
-          const selected = l.selectedBatch===b.id?' selected':''
-          html += '<option value="'+b.id+'"'+selected+'>'+b.purchase_number+' ('+b.date+'): '+parseFloat(b.qty_remaining).toFixed(0)+' units @ $'+parseFloat(b.unit_cost).toFixed(2)+'</option>'
+        const displayBatches = [...availBatches].reverse()
+        html += '<select id="inv-batch-'+i+'" onchange="setInvBatch('+i+',this.value)" style="width:100%;margin-top:3px;padding:3px 5px;border:1px solid #FED7AA;border-radius:4px;font-size:9px;background:#FFF7ED;color:#B45309;font-weight:600">'
+        displayBatches.forEach(b => {
+          const isSel = (l.selectedBatch && String(l.selectedBatch)===String(b.id))?' selected':''
+          const bQty = parseFloat(b.qty_received||b.qty||0)
+          const bQtyStr = isNaN(bQty)?'?':bQty.toFixed(0)
+          html += '<option value="'+b.id+'"'+isSel+'>'+b.purchase_number+' ('+b.date+') '+bQtyStr+'u @ $'+parseFloat(b.unit_cost||0).toFixed(2)+'</option>'
         })
         html += '</select>'
-      } else {
-        html += '<div style="font-size:9px;color:#DC2626;margin-top:2px">⚠️ No purchase batch found — enter cost manually</div>'
+      } else if(l.prod) {
+        html += '<div style="font-size:9px;color:#B45309;margin-top:2px;padding:2px 4px;background:#FFF7ED;border-radius:3px">Cost: $'+parseFloat(l.cost||0).toFixed(2)+'</div>'
       }
     }
     html += '</td>'
@@ -192,14 +196,20 @@ function renderInvLines() {
     html += '<td style="padding:4px"><input id="inv-price-'+i+'" type="number" value="'+(l.price||0)+'" min="0" step="0.01" oninput="setInvPrice('+i+',this.value)" onchange="setInvPrice('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-disc-line-'+i+'" type="number" value="'+(l.disc||0)+'" min="0" max="100" step="1" oninput="setInvDisc('+i+',this.value)" onchange="setInvDisc('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-com-'+i+'" type="number" value="'+(l.com||0)+'" min="0" step="0.01" placeholder="0.00" oninput="setInvCom('+i+',this.value)" onchange="setInvCom('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid #DDD6FE;border-radius:4px;font-size:12px;text-align:right;background:#F5F3FF;color:#7C3AED;font-weight:600"></td>'
-    // COST column — editable, pre-filled from product cost_price
+    // COST + MARGIN column
     const costVal = parseFloat(l.cost)||0
-    const ltUSD = cur==='BRL' ? lt/(parseFloat(el('inv-taxa')?.value)||5.5) : lt
-    const lineProfitUSD = ltUSD - costVal*(parseFloat(l.qty)||0)
+    const ltUSD = cur==='BRL' ? lt/taxa : lt
+    const totalCostLine = costVal * qty
+    const lineProfitUSD = ltUSD - totalCostLine
+    const marginPct = ltUSD>0 ? (lineProfitUSD/ltUSD*100) : 0
     const lineProfitColor = lineProfitUSD>0?'#16A34A':lineProfitUSD<0?'#DC2626':'var(--tx2)'
+    const profitBg = lineProfitUSD>0?'#F0FDF4':lineProfitUSD<0?'#FEF2F2':'#F9FAFB'
     html += '<td style="padding:4px">'
     html += '<input id="inv-cost-'+i+'" type="number" value="'+(l.cost||0)+'" min="0" step="0.01" oninput="setInvCost('+i+',this.value)" onchange="setInvCost('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid #FED7AA;border-radius:4px;font-size:12px;text-align:right;background:#FFF7ED;color:#B45309;font-weight:600">'
-    html += '<div style="font-size:9px;margin-top:2px;font-weight:700;color:'+lineProfitColor+'" id="inv-lp-'+i+'">'+(lineProfitUSD>=0?'▲ ':'▼ ')+'$'+Math.abs(lineProfitUSD).toFixed(2)+'</div>'
+    html += '<div style="margin-top:3px;padding:3px 6px;background:'+profitBg+';border-radius:4px;border:1px solid '+(lineProfitUSD>0?'#BBF7D0':lineProfitUSD<0?'#FECACA':'#E5E7EB')+'" id="inv-lp-'+i+'">'
+    html += '<div style="font-size:11px;font-weight:800;color:'+lineProfitColor+'">'+(lineProfitUSD>=0?'▲':'▼')+' $'+Math.abs(lineProfitUSD).toFixed(2)+'</div>'
+    html += '<div style="font-size:9px;color:'+lineProfitColor+'">'+marginPct.toFixed(1)+'% margin</div>'
+    html += '</div>'
     html += '</td>'
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="inv-lt-'+i+'">'+fc(lt,cur)+'</td>'
     html += '<td style="padding:4px 0"><button onclick="rmInvLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
@@ -393,7 +403,7 @@ window.ilProd = async function(i, pid) {
             purchase_number: po.number,
             date: po.date,
             unit_cost: parseFloat(pl.unit_cost)||0,
-            qty_received: parseFloat(pl.qty)||0,
+            qty_received: parseFloat(pl.qty)||0,  // always a number
             purchase_line_id: pl.id,
             purchase_id: pl.purchase_id
           })
@@ -1007,20 +1017,23 @@ window.editInvoice = async function(id) {
           seen.add(key)
           batches.push({id:pl.id, purchase_number:po.number, date:po.date,
             unit_cost:parseFloat(pl.unit_cost)||0, qty_received:parseFloat(pl.qty)||0,
-            purchase_line_id:pl.id, purchase_id:pl.purchase_id})
+            purchase_line_id:pl.id, purchase_id:pl.purchase_id, display_qty:parseFloat(pl.qty)||0})
         }
       }
       invLines[idx].availableBatches = batches
-      // Find the batch matching the saved cost
+      // Find the batch matching the saved cost (most recent match wins)
       const savedCost = invLines[idx].cost
-      const match = batches.find(b => Math.abs(b.unit_cost - savedCost) < 0.01)
+      const matches = batches.filter(b => Math.abs(b.unit_cost - savedCost) < 0.01)
+      const match = matches.length > 0 ? matches[matches.length-1] : null  // most recent
       if(match) {
         invLines[idx].selectedBatch = match.id
         invLines[idx].selectedPurchaseNumber = match.purchase_number
       } else if(batches.length > 0) {
+        // No exact cost match — pick most recent
         const latest = batches[batches.length-1]
         invLines[idx].selectedBatch = latest.id
         invLines[idx].selectedPurchaseNumber = latest.purchase_number
+        invLines[idx].cost = latest.unit_cost  // update cost to match
       }
     }
   }
