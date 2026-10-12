@@ -1510,8 +1510,11 @@ function renderInvoices() {
 function renderPurchases() {
   const tb=el('po-tb'); updateBadges()
   if(!purchases.length){tb.innerHTML=erow(9,'No purchases yet');return}
-  const from = el('po-from')?.value || ''
-  const to = el('po-to')?.value || ''
+  let from = el('po-from')?.value || ''
+  let to = el('po-to')?.value || ''
+  // Normalize date format to YYYY-MM-DD if entered as MM/DD/YYYY
+  const normDate = d => { if(!d) return ''; const m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m?`${m[3]}-${m[1]}-${m[2]}`:d }
+  from = normDate(from); to = normDate(to)
   const filtered = purchases.filter(po => (!from || po.date >= from) && (!to || po.date <= to))
   // Show total in USD base amount
   const totalAmt = filtered.reduce((a, po) => a + (parseFloat(po.base_amount)||0), 0)
