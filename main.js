@@ -2552,3 +2552,4 @@ window.editPurchase = async function(id) {
 
   el('mo-purchase').classList.add('open')
 }
+
