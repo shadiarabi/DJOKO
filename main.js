@@ -146,14 +146,13 @@ window.addPoLine = function() { poLines.push({prod:null,qty:1,cost:0}); renderPo
 // ── RENDER INVOICE LINES ──────────────────────────────────
 function renderInvLines() {
   const cur = el('inv-cur')?.value || baseCur
-  const taxa = parseFloat(el('inv-taxa')?.value)||5.5
   let html = '<table style="width:100%;border-collapse:collapse;margin-bottom:4px"><thead><tr style="background:#F9FAFB">'
   html += '<th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr)">PRODUCT</th>'
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:65px">QTY</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">PRICE</th>'
   html += '<th style="padding:6px 8px;text-align:center;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:55px">DISC%</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#7C3AED;border-bottom:1px solid var(--bdr);width:90px">COM (R$)</th>'
-  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#B45309;border-bottom:1px solid var(--bdr);width:120px">COST $ / MARGIN</th>'
+  html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:#B45309;border-bottom:1px solid var(--bdr);width:85px">COST $</th>'
   html += '<th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:600;color:var(--tx2);border-bottom:1px solid var(--bdr);width:85px">TOTAL</th>'
   html += '<th style="border-bottom:1px solid var(--bdr);width:26px"></th>'
   html += '</tr></thead><tbody>'
@@ -178,17 +177,14 @@ function renderInvLines() {
       // Show cost source dropdown from available purchase batches
       const availBatches = l.availableBatches || []
       if(availBatches.length > 0) {
-        const displayBatches = [...availBatches].reverse()
-        html += '<select id="inv-batch-'+i+'" onchange="setInvBatch('+i+',this.value)" style="width:100%;margin-top:3px;padding:3px 5px;border:1px solid #FED7AA;border-radius:4px;font-size:9px;background:#FFF7ED;color:#B45309;font-weight:600">'
-        displayBatches.forEach(b => {
-          const isSel = (l.selectedBatch && String(l.selectedBatch)===String(b.id))?' selected':''
-          const bQty = parseFloat(b.qty_received||b.qty||0)
-          const bQtyStr = isNaN(bQty)?'?':bQty.toFixed(0)
-          html += '<option value="'+b.id+'"'+isSel+'>'+b.purchase_number+' ('+b.date+') '+bQtyStr+'u @ $'+parseFloat(b.unit_cost||0).toFixed(2)+'</option>'
+        html += '<select id="inv-batch-'+i+'" onchange="setInvBatch('+i+',this.value)" style="width:100%;margin-top:3px;padding:3px 5px;border:1px solid #FED7AA;border-radius:4px;font-size:9px;background:#FFF7ED;color:#B45309">'
+        availBatches.forEach(b => {
+          const selected = l.selectedBatch===b.id?' selected':''
+          html += '<option value="'+b.id+'"'+selected+'>'+b.purchase_number+' ('+b.date+'): '+parseFloat(b.qty_remaining).toFixed(0)+' units @ $'+parseFloat(b.unit_cost).toFixed(2)+'</option>'
         })
         html += '</select>'
-      } else if(l.prod) {
-        html += '<div style="font-size:9px;color:#B45309;margin-top:2px;padding:2px 4px;background:#FFF7ED;border-radius:3px">Cost: $'+parseFloat(l.cost||0).toFixed(2)+'</div>'
+      } else {
+        html += '<div style="font-size:9px;color:#DC2626;margin-top:2px">⚠️ No purchase batch found — enter cost manually</div>'
       }
     }
     html += '</td>'
@@ -196,20 +192,14 @@ function renderInvLines() {
     html += '<td style="padding:4px"><input id="inv-price-'+i+'" type="number" value="'+(l.price||0)+'" min="0" step="0.01" oninput="setInvPrice('+i+',this.value)" onchange="setInvPrice('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:right;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-disc-line-'+i+'" type="number" value="'+(l.disc||0)+'" min="0" max="100" step="1" oninput="setInvDisc('+i+',this.value)" onchange="setInvDisc('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid var(--bdr2);border-radius:4px;font-size:12px;text-align:center;background:var(--inp)"></td>'
     html += '<td style="padding:4px"><input id="inv-com-'+i+'" type="number" value="'+(l.com||0)+'" min="0" step="0.01" placeholder="0.00" oninput="setInvCom('+i+',this.value)" onchange="setInvCom('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid #DDD6FE;border-radius:4px;font-size:12px;text-align:right;background:#F5F3FF;color:#7C3AED;font-weight:600"></td>'
-    // COST + MARGIN column
+    // COST column — editable, pre-filled from product cost_price
     const costVal = parseFloat(l.cost)||0
-    const ltUSD = cur==='BRL' ? lt/taxa : lt
-    const totalCostLine = costVal * qty
-    const lineProfitUSD = ltUSD - totalCostLine
-    const marginPct = ltUSD>0 ? (lineProfitUSD/ltUSD*100) : 0
+    const ltUSD = cur==='BRL' ? lt/(parseFloat(el('inv-taxa')?.value)||5.5) : lt
+    const lineProfitUSD = ltUSD - costVal*(parseFloat(l.qty)||0)
     const lineProfitColor = lineProfitUSD>0?'#16A34A':lineProfitUSD<0?'#DC2626':'var(--tx2)'
-    const profitBg = lineProfitUSD>0?'#F0FDF4':lineProfitUSD<0?'#FEF2F2':'#F9FAFB'
     html += '<td style="padding:4px">'
     html += '<input id="inv-cost-'+i+'" type="number" value="'+(l.cost||0)+'" min="0" step="0.01" oninput="setInvCost('+i+',this.value)" onchange="setInvCost('+i+',this.value)" style="width:100%;padding:5px 4px;border:1px solid #FED7AA;border-radius:4px;font-size:12px;text-align:right;background:#FFF7ED;color:#B45309;font-weight:600">'
-    html += '<div style="margin-top:3px;padding:3px 6px;background:'+profitBg+';border-radius:4px;border:1px solid '+(lineProfitUSD>0?'#BBF7D0':lineProfitUSD<0?'#FECACA':'#E5E7EB')+'" id="inv-lp-'+i+'">'
-    html += '<div style="font-size:11px;font-weight:800;color:'+lineProfitColor+'">'+(lineProfitUSD>=0?'▲':'▼')+' $'+Math.abs(lineProfitUSD).toFixed(2)+'</div>'
-    html += '<div style="font-size:9px;color:'+lineProfitColor+'">'+marginPct.toFixed(1)+'% margin</div>'
-    html += '</div>'
+    html += '<div style="font-size:9px;margin-top:2px;font-weight:700;color:'+lineProfitColor+'" id="inv-lp-'+i+'">'+(lineProfitUSD>=0?'▲ ':'▼ ')+'$'+Math.abs(lineProfitUSD).toFixed(2)+'</div>'
     html += '</td>'
     html += '<td style="padding:4px;text-align:right;font-size:12px;font-weight:600;color:var(--acc)" id="inv-lt-'+i+'">'+fc(lt,cur)+'</td>'
     html += '<td style="padding:4px 0"><button onclick="rmInvLine('+i+')" style="background:none;border:none;cursor:pointer;color:#ccc;padding:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></td>'
@@ -403,7 +393,7 @@ window.ilProd = async function(i, pid) {
             purchase_number: po.number,
             date: po.date,
             unit_cost: parseFloat(pl.unit_cost)||0,
-            qty_received: parseFloat(pl.qty)||0,  // always a number
+            qty_received: parseFloat(pl.qty)||0,
             purchase_line_id: pl.id,
             purchase_id: pl.purchase_id
           })
@@ -515,6 +505,78 @@ window.saveSettings = async function() {
   Object.assign(settings,data)
   el('tco').textContent=settings.company
   closeModal('mo-settings'); saved(); toast('Settings saved')
+}
+
+// ── BACKFILL COGS: link old invoice lines to purchase lines ──
+window.backfillCOGS = async function() {
+  if(!confirm('This will scan ALL invoice lines, match them to purchase orders by product + cost, and update COGS.\n\nThis is safe to run multiple times.\n\nContinue?')) return
+  const btn = document.querySelector('[onclick="backfillCOGS()"]')
+  if(btn) { btn.disabled=true; btn.textContent='⏳ Running...' }
+  try {
+    // 1. Fetch all invoice lines
+    const {data:allInvLines, error:ilErr} = await sb.from('invoice_lines').select('id,invoice_id,product_id,qty,cogs,purchase_line_id')
+    if(ilErr) throw ilErr
+    // 2. Fetch all purchase lines with their PO date+number
+    const {data:allPurchLines, error:plErr} = await sb.from('purchase_lines').select('id,purchase_id,product_id,unit_cost,qty,purchases(number,date)')
+    if(plErr) throw plErr
+    // Build a lookup: product_id → purchase lines sorted oldest first
+    const plByProduct = {}
+    for(const pl of (allPurchLines||[])) {
+      const pid = pl.product_id
+      if(!plByProduct[pid]) plByProduct[pid] = []
+      plByProduct[pid].push(pl)
+    }
+    // Sort each product's purchase lines by PO date ascending
+    for(const pid in plByProduct) {
+      plByProduct[pid].sort((a,b) => (a.purchases?.date||'') < (b.purchases?.date||'') ? -1 : 1)
+    }
+    // 3. For each invoice line: match by product_id + closest unit_cost
+    let updatedLines = 0, updatedInvoices = 0
+    const affectedInvoiceIds = new Set()
+    for(const il of (allInvLines||[])) {
+      const candidates = plByProduct[il.product_id] || []
+      if(!candidates.length) continue
+      // Match by unit_cost: find the purchase line whose unit_cost = cogs/qty (within $0.10 tolerance)
+      const ilUnitCost = (il.qty && il.cogs) ? parseFloat(il.cogs) / parseFloat(il.qty) : null
+      let bestMatch = null
+      if(ilUnitCost !== null) {
+        // Find closest cost match
+        let minDiff = Infinity
+        for(const pl of candidates) {
+          const diff = Math.abs(parseFloat(pl.unit_cost) - ilUnitCost)
+          if(diff < minDiff) { minDiff=diff; bestMatch=pl }
+        }
+        // Only link if within $1 tolerance (covers floating point rounding)
+        if(minDiff > 1) bestMatch = null
+      }
+      if(!bestMatch) continue
+      // Update invoice_line with the matched purchase_line_id and recalculated COGS
+      const newCogs = (parseFloat(il.qty)||0) * parseFloat(bestMatch.unit_cost)
+      const {error:ue} = await sb.from('invoice_lines').update({
+        purchase_line_id: bestMatch.id,
+        purchase_number: bestMatch.purchases?.number || null,
+        cogs: newCogs
+      }).eq('id', il.id)
+      if(!ue) { updatedLines++; affectedInvoiceIds.add(il.invoice_id) }
+    }
+    // 4. Recalculate invoices.cogs totals for all affected invoices
+    for(const invId of affectedInvoiceIds) {
+      const {data:lines} = await sb.from('invoice_lines').select('cogs').eq('invoice_id', invId)
+      const newTotal = (lines||[]).reduce((a,l) => a+(parseFloat(l.cogs)||0), 0)
+      await sb.from('invoices').update({cogs: newTotal}).eq('id', invId)
+      const memInv = invoices.find(i => i.id === invId)
+      if(memInv) memInv.cogs = newTotal
+      updatedInvoices++
+    }
+    renderInvoices(); renderDash()
+    toast('✓ Backfill complete: '+updatedLines+' lines linked, '+updatedInvoices+' invoices updated', true)
+    if(btn) { btn.disabled=false; btn.textContent='🔄 Recalculate All COGS' }
+    closeModal('mo-settings')
+  } catch(e) {
+    console.error('Backfill error:', e)
+    toast('⚠️ Backfill error: '+e.message, false)
+    if(btn) { btn.disabled=false; btn.textContent='🔄 Recalculate All COGS' }
+  }
 }
 
 // ── CUSTOMERS ─────────────────────────────────────────────
@@ -840,7 +902,7 @@ window.saveInvoice = async function() {
       const ta=el('inv-imei-'+i); if(ta) invLines[i].imei=ta.value
       const ca=el('inv-cost-'+i); if(ca) invLines[i].cost=parseFloat(ca.value)||invLines[i].cost
     })
-    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod?.cost_price||0),imei:l.imei||null})))
+    await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:editId,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod?.cost_price||0),imei:l.imei||null,purchase_line_id:l.selectedBatch||null,purchase_number:l.selectedPurchaseNumber||null})))
     // Adjust stock: restore old sold qty, then deduct new sold qty
     for(const l of valid){
       if(!l.prod?.id) continue
@@ -894,7 +956,7 @@ window.saveInvoice = async function() {
   })
   // Delete any existing lines first (prevents duplicates if save clicked twice)
   await sb.from('invoice_lines').delete().eq('invoice_id', inv.id)
-  await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod?.cost_price||0),imei:l.imei||null})))
+  await sb.from('invoice_lines').insert(invLines.map(l=>({invoice_id:inv.id,product_id:l.prod?.id,product_name:l.prod?.name,product_code:l.prod?.code,qty:l.qty,unit_price:l.price,discount_pct:l.disc||0,commission_pct:0,commission_amt:parseFloat(l.com)||0,line_total:l.qty*l.price*(1-(l.disc||0)/100),cogs:(parseFloat(l.qty)||0)*(parseFloat(l.cost)||l.prod?.cost_price||0),imei:l.imei||null,purchase_line_id:l.selectedBatch||null,purchase_number:l.selectedPurchaseNumber||null})))
     for(const l of valid){
     const subQty = parseFloat(l.qty)||0
     const {data:freshProd} = await sb.from('products').select('qty').eq('id',l.prod.id).single()
@@ -1017,23 +1079,20 @@ window.editInvoice = async function(id) {
           seen.add(key)
           batches.push({id:pl.id, purchase_number:po.number, date:po.date,
             unit_cost:parseFloat(pl.unit_cost)||0, qty_received:parseFloat(pl.qty)||0,
-            purchase_line_id:pl.id, purchase_id:pl.purchase_id, display_qty:parseFloat(pl.qty)||0})
+            purchase_line_id:pl.id, purchase_id:pl.purchase_id})
         }
       }
       invLines[idx].availableBatches = batches
-      // Find the batch matching the saved cost (most recent match wins)
+      // Find the batch matching the saved cost
       const savedCost = invLines[idx].cost
-      const matches = batches.filter(b => Math.abs(b.unit_cost - savedCost) < 0.01)
-      const match = matches.length > 0 ? matches[matches.length-1] : null  // most recent
+      const match = batches.find(b => Math.abs(b.unit_cost - savedCost) < 0.01)
       if(match) {
         invLines[idx].selectedBatch = match.id
         invLines[idx].selectedPurchaseNumber = match.purchase_number
       } else if(batches.length > 0) {
-        // No exact cost match — pick most recent
         const latest = batches[batches.length-1]
         invLines[idx].selectedBatch = latest.id
         invLines[idx].selectedPurchaseNumber = latest.purchase_number
-        invLines[idx].cost = latest.unit_cost  // update cost to match
       }
     }
   }
@@ -1108,6 +1167,42 @@ window.savePurchase = async function() {
       if(se) { console.error('Stock update FAILED:', se.message); toast('⚠️ Stock update failed: '+se.message, false) }
       const p=products.find(x=>x.id===l.prod.id)
       if(p){p.qty=newQty; p.cost_price=newCost}
+    }
+    // ── AUTO-LINK: update invoice COGS for lines linked to this PO ──
+    // After editing purchase line costs, find all invoice_lines that reference
+    // these purchase_lines and update their COGS + recalculate invoice totals.
+    try {
+      // Get the newly saved purchase_lines (with their IDs) for this PO
+      const {data:newPurchaseLines} = await sb.from('purchase_lines').select('id,product_id,unit_cost').eq('purchase_id', editId)
+      if(newPurchaseLines && newPurchaseLines.length > 0) {
+        const plIds = newPurchaseLines.map(pl => pl.id)
+        // Find all invoice_lines linked to any of these purchase_lines
+        const {data:linkedInvLines} = await sb.from('invoice_lines').select('id,invoice_id,qty,purchase_line_id').in('purchase_line_id', plIds)
+        if(linkedInvLines && linkedInvLines.length > 0) {
+          // Update each linked invoice_line's COGS using the new unit_cost
+          const plCostMap = {}
+          newPurchaseLines.forEach(pl => { plCostMap[pl.id] = pl.unit_cost })
+          for(const il of linkedInvLines) {
+            const newUnitCost = plCostMap[il.purchase_line_id]
+            if(newUnitCost == null) continue
+            const newCogs = (parseFloat(il.qty)||0) * parseFloat(newUnitCost)
+            await sb.from('invoice_lines').update({cogs: newCogs}).eq('id', il.id)
+          }
+          // Recalculate and update the invoices.cogs totals for affected invoices
+          const affectedInvoiceIds = [...new Set(linkedInvLines.map(il => il.invoice_id))]
+          for(const invId of affectedInvoiceIds) {
+            const {data:allLines} = await sb.from('invoice_lines').select('cogs').eq('invoice_id', invId)
+            const newTotalCogs = (allLines||[]).reduce((a,l) => a + (parseFloat(l.cogs)||0), 0)
+            await sb.from('invoices').update({cogs: newTotalCogs}).eq('id', invId)
+            // Update in-memory invoices array too
+            const memInv = invoices.find(i => i.id === invId)
+            if(memInv) memInv.cogs = newTotalCogs
+          }
+          toast('✓ '+affectedInvoiceIds.length+' invoice(s) COGS updated automatically', true)
+        }
+      }
+    } catch(e) {
+      console.warn('Auto-link COGS update error:', e)
     }
     // Update PO in memory
     if(oldPo) Object.assign(oldPo, poData)
