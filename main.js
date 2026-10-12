@@ -1507,28 +1507,39 @@ function renderInvoices() {
   }).join('')
 }
 
-function renderPurchases() {
-  const tb=el('po-tb'); updateBadges()
-  if(!purchases.length){tb.innerHTML=erow(9,'No purchases yet');return}
-  let from = el('po-from')?.value || ''
-  let to = el('po-to')?.value || ''
-  // Normalize date format to YYYY-MM-DD if entered as MM/DD/YYYY
-  const normDate = d => { if(!d) return ''; const m=d.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m?`${m[3]}-${m[1]}-${m[2]}`:d }
-  from = normDate(from); to = normDate(to)
+window.filterPurchases = function() {
+  const from = el('po-from')?.value || ''
+  const to = el('po-to')?.value || ''
   const filtered = purchases.filter(po => (!from || po.date >= from) && (!to || po.date <= to))
-  // Show total in USD base amount
   const totalAmt = filtered.reduce((a, po) => a + (parseFloat(po.base_amount)||0), 0)
   const totalPaid = filtered.reduce((a, po) => a + (parseFloat(po.paid_amount)||0), 0)
   const totalLabel = el('po-total-label')
-  if(totalLabel) {
-    if(from || to) {
-      totalLabel.textContent = `${filtered.length} POs · Total: ${fmt(totalAmt)} · Paid: ${fmt(totalPaid)} · Balance: ${fmt(totalAmt-totalPaid)}`
-    } else {
-      totalLabel.textContent = `${purchases.length} POs · Total: ${fmt(totalAmt)}`
-    }
-  }
+  if(totalLabel) totalLabel.textContent = `${filtered.length} POs · Total: ${fmt(totalAmt)} · Paid: ${fmt(totalPaid)} · Balance: ${fmt(totalAmt-totalPaid)}`
+  const tb = el('po-tb')
   if(!filtered.length){tb.innerHTML=erow(9,'No purchases in this period');return}
   tb.innerHTML=filtered.map(po=>`<tr>
+    <td style="font-weight:700;color:var(--org)">${po.number}</td>
+    <td>${po.supplier_name}</td><td>${po.date}</td>
+    <td><span class="badge bcur">${po.currency}</span></td>
+    <td style="font-weight:700">${fc(po.total,po.currency)}</td>
+    <td style="color:var(--grn)">${fmt(po.paid_amount||0)}</td>
+    <td style="color:${(po.balance||0)>0?'var(--red)':'var(--grn)'};font-weight:700">${fmt(po.balance||0)}</td>
+    <td>${sbadge(po.status)}</td>
+    <td style="white-space:nowrap">
+      <button class="btn sm" onclick="printPurchase('${po.id}')" title="Print PO" style="padding:4px 7px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+      </button>
+      <button class="btn icon ghost" onclick="editPurchase('${po.id}')" title="Edit" style="color:var(--acc)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+      ${delBtn(`delPurchase('${po.id}')`)}
+    </td></tr>`).join('')
+}
+function renderPurchases() {
+  const tb=el('po-tb'); updateBadges()
+  if(!purchases.length){tb.innerHTML=erow(9,'No purchases yet');return}
+  const totalAmt = purchases.reduce((a, po) => a + (parseFloat(po.base_amount)||0), 0)
+  const totalLabel = el('po-total-label')
+  if(totalLabel) totalLabel.textContent = `${purchases.length} POs · Total: ${fmt(totalAmt)}`
+  tb.innerHTML=purchases.map(po=>`<tr>
     <td style="font-weight:700;color:var(--org)">${po.number}</td>
     <td>${po.supplier_name}</td><td>${po.date}</td>
     <td><span class="badge bcur">${po.currency}</span></td>
