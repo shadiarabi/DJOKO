@@ -373,7 +373,7 @@ code{font-size:10px;background:#F3F4F6;padding:2px 5px;border-radius:3px;font-fa
   <div class="fr"><div class="fg"><label>Email</label><input id="set-em" placeholder="info@djoko.com"></div><div class="fg"><label>VAT / Tax number</label><input id="set-vat" placeholder="Optional"></div></div>
   <div class="fr"><div class="fg"><label>Invoice prefix</label><input id="set-ip" value="INV-"></div><div class="fg"><label>Payment terms (days)</label><input id="set-pt" type="number" value="30"></div></div>
 </div>
-<div class="mf"><button class="btn" onclick="closeModal('mo-settings')">Cancel</button><button class="btn pri" onclick="saveSettings()">Save settings</button></div>
+<div class="mf"><button class="btn" onclick="closeModal('mo-settings')">Cancel</button><button class="btn" onclick="backfillCOGS()" style="background:#7C3AED;color:#fff;border-color:#7C3AED">🔄 Recalculate All COGS</button><button class="btn pri" onclick="saveSettings()">Save settings</button></div>
 </div></div>
 
 <!-- CUSTOMER -->
