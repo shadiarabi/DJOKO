@@ -1139,10 +1139,14 @@ window.savePurchase = async function() {
     const poData={number:el('po-num').value,supplier_id:sid,supplier_name:supp?.name,date:el('po-date').value,delivery_date:el('po-del').value,currency:cur,total,base_amount:baseAmt,paid_amount:paid,balance:baseAmt-paid,status}
     const {error}=await sb.from('purchases').update(poData).eq('id',editId)
     if(error){btn.disabled=false;btn.textContent='Update PO';return toast('Error: '+error.message,false)}
-    // Capture OLD line quantities BEFORE deleting (needed to correctly adjust stock)
-    const {data:oldLinesBeforeDelete} = await sb.from('purchase_lines').select('product_id,qty').eq('purchase_id',editId)
+    // Capture OLD line quantities AND IDs BEFORE deleting (needed to correctly adjust stock + auto-link)
+    const {data:oldLinesBeforeDelete} = await sb.from('purchase_lines').select('id,product_id,qty').eq('purchase_id',editId)
     const oldQtyMap = {}
-    ;(oldLinesBeforeDelete||[]).forEach(ol=>{ oldQtyMap[ol.product_id] = (oldQtyMap[ol.product_id]||0) + (parseFloat(ol.qty)||0) })
+    const oldLinesByProduct = {} // product_id -> old purchase_line id (for re-linking invoice_lines)
+    ;(oldLinesBeforeDelete||[]).forEach(ol=>{
+      oldQtyMap[ol.product_id] = (oldQtyMap[ol.product_id]||0) + (parseFloat(ol.qty)||0)
+      oldLinesByProduct[ol.product_id] = ol.id
+    })
     if(oldPo) oldPo._lineQtyMap = oldQtyMap
     // Replace lines
     await sb.from('purchase_lines').delete().eq('purchase_id',editId)
@@ -1169,36 +1173,35 @@ window.savePurchase = async function() {
       if(p){p.qty=newQty; p.cost_price=newCost}
     }
     // ── AUTO-LINK: update invoice COGS for lines linked to this PO ──
-    // After editing purchase line costs, find all invoice_lines that reference
-    // these purchase_lines and update their COGS + recalculate invoice totals.
+    // Old purchase_line IDs were deleted and replaced with new ones.
+    // Find invoice_lines that referenced the OLD IDs, re-link them to the NEW IDs, and update COGS.
     try {
-      // Get the newly saved purchase_lines (with their IDs) for this PO
       const {data:newPurchaseLines} = await sb.from('purchase_lines').select('id,product_id,unit_cost').eq('purchase_id', editId)
       if(newPurchaseLines && newPurchaseLines.length > 0) {
-        const plIds = newPurchaseLines.map(pl => pl.id)
-        // Find all invoice_lines linked to any of these purchase_lines
-        const {data:linkedInvLines} = await sb.from('invoice_lines').select('id,invoice_id,qty,purchase_line_id').in('purchase_line_id', plIds)
-        if(linkedInvLines && linkedInvLines.length > 0) {
-          // Update each linked invoice_line's COGS using the new unit_cost
-          const plCostMap = {}
-          newPurchaseLines.forEach(pl => { plCostMap[pl.id] = pl.unit_cost })
-          for(const il of linkedInvLines) {
-            const newUnitCost = plCostMap[il.purchase_line_id]
-            if(newUnitCost == null) continue
-            const newCogs = (parseFloat(il.qty)||0) * parseFloat(newUnitCost)
-            await sb.from('invoice_lines').update({cogs: newCogs}).eq('id', il.id)
+        // Build map: product_id -> new purchase_line
+        const newLineByProduct = {}
+        newPurchaseLines.forEach(pl => { newLineByProduct[pl.product_id] = pl })
+        // For each old purchase_line id, find linked invoice_lines and update them
+        const oldIds = Object.values(oldLinesByProduct)
+        if(oldIds.length > 0) {
+          const {data:linkedInvLines} = await sb.from('invoice_lines').select('id,invoice_id,qty,product_id,purchase_line_id').in('purchase_line_id', oldIds)
+          if(linkedInvLines && linkedInvLines.length > 0) {
+            for(const il of linkedInvLines) {
+              const newPL = newLineByProduct[il.product_id]
+              if(!newPL) continue
+              const newCogs = (parseFloat(il.qty)||0) * parseFloat(newPL.unit_cost)
+              await sb.from('invoice_lines').update({cogs: newCogs, purchase_line_id: newPL.id}).eq('id', il.id)
+            }
+            const affectedInvoiceIds = [...new Set(linkedInvLines.map(il => il.invoice_id))]
+            for(const invId of affectedInvoiceIds) {
+              const {data:allLines} = await sb.from('invoice_lines').select('cogs').eq('invoice_id', invId)
+              const newTotalCogs = (allLines||[]).reduce((a,l) => a + (parseFloat(l.cogs)||0), 0)
+              await sb.from('invoices').update({cogs: newTotalCogs}).eq('id', invId)
+              const memInv = invoices.find(i => i.id === invId)
+              if(memInv) memInv.cogs = newTotalCogs
+            }
+            toast('✓ '+affectedInvoiceIds.length+' invoice(s) COGS updated automatically', true)
           }
-          // Recalculate and update the invoices.cogs totals for affected invoices
-          const affectedInvoiceIds = [...new Set(linkedInvLines.map(il => il.invoice_id))]
-          for(const invId of affectedInvoiceIds) {
-            const {data:allLines} = await sb.from('invoice_lines').select('cogs').eq('invoice_id', invId)
-            const newTotalCogs = (allLines||[]).reduce((a,l) => a + (parseFloat(l.cogs)||0), 0)
-            await sb.from('invoices').update({cogs: newTotalCogs}).eq('id', invId)
-            // Update in-memory invoices array too
-            const memInv = invoices.find(i => i.id === invId)
-            if(memInv) memInv.cogs = newTotalCogs
-          }
-          toast('✓ '+affectedInvoiceIds.length+' invoice(s) COGS updated automatically', true)
         }
       }
     } catch(e) {
@@ -1507,7 +1510,22 @@ function renderInvoices() {
 function renderPurchases() {
   const tb=el('po-tb'); updateBadges()
   if(!purchases.length){tb.innerHTML=erow(9,'No purchases yet');return}
-  tb.innerHTML=purchases.map(po=>`<tr>
+  const from = el('po-from')?.value || ''
+  const to = el('po-to')?.value || ''
+  const filtered = purchases.filter(po => (!from || po.date >= from) && (!to || po.date <= to))
+  // Show total in USD base amount
+  const totalAmt = filtered.reduce((a, po) => a + (parseFloat(po.base_amount)||0), 0)
+  const totalPaid = filtered.reduce((a, po) => a + (parseFloat(po.paid_amount)||0), 0)
+  const totalLabel = el('po-total-label')
+  if(totalLabel) {
+    if(from || to) {
+      totalLabel.textContent = `${filtered.length} POs · Total: ${fmt(totalAmt)} · Paid: ${fmt(totalPaid)} · Balance: ${fmt(totalAmt-totalPaid)}`
+    } else {
+      totalLabel.textContent = `${purchases.length} POs · Total: ${fmt(totalAmt)}`
+    }
+  }
+  if(!filtered.length){tb.innerHTML=erow(9,'No purchases in this period');return}
+  tb.innerHTML=filtered.map(po=>`<tr>
     <td style="font-weight:700;color:var(--org)">${po.number}</td>
     <td>${po.supplier_name}</td><td>${po.date}</td>
     <td><span class="badge bcur">${po.currency}</span></td>
@@ -2531,4 +2549,3 @@ window.editPurchase = async function(id) {
 
   el('mo-purchase').classList.add('open')
 }
-
