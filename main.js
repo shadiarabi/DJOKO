@@ -423,6 +423,11 @@ window.ilProd = async function(i, pid) {
       // Only show costs with stock remaining
       const batchesWithStock = batches.filter(b => b.qty_remaining > 0)
       invLines[i].availableBatches = batchesWithStock.length > 0 ? batchesWithStock : batches.slice(-1)
+
+      // DEBUG — remove after testing
+      console.log('DEBUG ilProd pid='+pid+' poLines='+poLinesData.length+' soldLines='+(soldData||[]).length+' unlinkedSold='+unlinkedSold)
+      console.log('DEBUG batches ALL:', JSON.stringify(batches.map(b=>({cost:b.unit_cost,rem:b.qty_remaining}))))
+      console.log('DEBUG batchesWithStock:', JSON.stringify(batchesWithStock.map(b=>({cost:b.unit_cost,rem:b.qty_remaining}))))
       // Auto-select MOST RECENT purchase with stock available
       const withStock = batchesWithStock
       const autoSelect = withStock.length > 0 ? withStock[withStock.length-1] : batches[batches.length-1]
@@ -2587,4 +2592,3 @@ window.editPurchase = async function(id) {
 
   el('mo-purchase').classList.add('open')
 }
-
