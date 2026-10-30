@@ -177,16 +177,15 @@ function renderInvLines() {
       // Show cost source dropdown from available purchase batches
       const availBatches = l.availableBatches || []
       if(availBatches.length > 0) {
-        html += '<select id="inv-batch-'+i+'" onchange="setInvBatch('+i+',this.value)" style="width:100%;margin-top:3px;padding:3px 5px;border:1px solid #FED7AA;border-radius:4px;font-size:9px;background:#FFF7ED;color:#B45309">'
+        html += '<select id="inv-batch-'+i+'" onchange="setInvBatch('+i+',this.value)" style="width:100%;margin-top:3px;padding:3px 5px;border:1px solid #FED7AA;border-radius:4px;font-size:10px;background:#FFF7ED;color:#B45309;font-weight:600">'
         availBatches.forEach(b => {
           const selected = l.selectedBatch===b.id?' selected':''
           const rem = parseFloat(b.qty_remaining)||0
-          const remLabel = rem > 0 ? rem+' avail' : '⚠️ 0 left'
-          html += '<option value="'+b.id+'"'+selected+'>'+b.purchase_number+' ('+b.date+') — $'+parseFloat(b.unit_cost).toFixed(2)+'/unit · '+remLabel+'</option>'
+          html += '<option value="'+b.id+'"'+selected+'>Cost: $'+parseFloat(b.unit_cost).toFixed(2)+' — '+rem+' units available</option>'
         })
         html += '</select>'
       } else {
-        html += '<div style="font-size:9px;color:#DC2626;margin-top:2px">⚠️ No purchase batch found — enter cost manually</div>'
+        html += '<div style="font-size:9px;color:#DC2626;margin-top:2px">⚠️ No stock found — enter cost manually</div>'
       }
     }
     html += '</td>'
@@ -2578,3 +2577,4 @@ window.editPurchase = async function(id) {
 
   el('mo-purchase').classList.add('open')
 }
+
