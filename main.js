@@ -376,8 +376,14 @@ window.ilProd = async function(i, pid) {
     if(poLinesData && poLinesData.length > 0) {
       // Build map of sold qty per purchase_line_id
       const soldByPL = {}
+      let unlinkedSold = 0
       ;(soldData||[]).forEach(il => {
-        if(il.purchase_line_id) soldByPL[il.purchase_line_id] = (soldByPL[il.purchase_line_id]||0) + (parseFloat(il.qty)||0)
+        if(il.purchase_line_id) {
+          soldByPL[il.purchase_line_id] = (soldByPL[il.purchase_line_id]||0) + (parseFloat(il.qty)||0)
+        } else {
+          // Sales not linked to a specific PO — distribute FIFO from oldest
+          unlinkedSold += parseFloat(il.qty)||0
+        }
       })
 
       // Sort by purchase date ascending (oldest first = FIFO)
@@ -386,6 +392,18 @@ window.ilProd = async function(i, pid) {
         const db = b.purchases?.date || ''
         return da < db ? -1 : da > db ? 1 : 0
       })
+
+      // Apply unlinked sales FIFO against oldest purchase lines
+      let unlinkedLeft = unlinkedSold
+      for(const pl of poLinesData) {
+        if(unlinkedLeft <= 0) break
+        const alreadySold = soldByPL[pl.id] || 0
+        const available = Math.max(0, (parseFloat(pl.qty)||0) - alreadySold)
+        const deduct = Math.min(unlinkedLeft, available)
+        soldByPL[pl.id] = alreadySold + deduct
+        unlinkedLeft -= deduct
+      }
+
       // Group by COST PRICE — merge all POs with same cost into one row
       const costMap = {}
       for(const pl of poLinesData) {
