@@ -180,7 +180,9 @@ function renderInvLines() {
         html += '<select id="inv-batch-'+i+'" onchange="setInvBatch('+i+',this.value)" style="width:100%;margin-top:3px;padding:3px 5px;border:1px solid #FED7AA;border-radius:4px;font-size:9px;background:#FFF7ED;color:#B45309">'
         availBatches.forEach(b => {
           const selected = l.selectedBatch===b.id?' selected':''
-          html += '<option value="'+b.id+'"'+selected+'>'+b.purchase_number+' ('+b.date+'): '+parseFloat(b.qty_remaining).toFixed(0)+' units @ $'+parseFloat(b.unit_cost).toFixed(2)+'</option>'
+          const rem = parseFloat(b.qty_remaining)||0
+          const remLabel = rem > 0 ? rem+' avail' : '⚠️ 0 left'
+          html += '<option value="'+b.id+'"'+selected+'>'+b.purchase_number+' ('+b.date+') — $'+parseFloat(b.unit_cost).toFixed(2)+'/unit · '+remLabel+'</option>'
         })
         html += '</select>'
       } else {
@@ -366,15 +368,21 @@ window.ilProd = async function(i, pid) {
     invLines[i].selectedBatch = null
     invLines[i].availableBatches = []
 
-    // ── PERMANENT FIX: Query purchase_lines DIRECTLY ──────
-    const {data:poLines} = await sb
-      .from('purchase_lines')
-      .select('*, purchases(number, date, status)')
-      .eq('product_id', pid)
+    // ── Query purchase_lines + sold qty per batch ──────
+    const [{data:poLinesData}, {data:soldData}] = await Promise.all([
+      sb.from('purchase_lines').select('*, purchases(number, date, status)').eq('product_id', pid),
+      sb.from('invoice_lines').select('purchase_line_id, qty').eq('product_id', pid)
+    ])
 
-    if(poLines && poLines.length > 0) {
-      // Sort by purchase date in JS (avoids Supabase nested order issues)
-      poLines.sort((a,b) => {
+    if(poLinesData && poLinesData.length > 0) {
+      // Build map of sold qty per purchase_line_id
+      const soldByPL = {}
+      ;(soldData||[]).forEach(il => {
+        if(il.purchase_line_id) soldByPL[il.purchase_line_id] = (soldByPL[il.purchase_line_id]||0) + (parseFloat(il.qty)||0)
+      })
+
+      // Sort by purchase date ascending (oldest first = FIFO)
+      poLinesData.sort((a,b) => {
         const da = a.purchases?.date || ''
         const db = b.purchases?.date || ''
         return da < db ? -1 : da > db ? 1 : 0
@@ -382,30 +390,35 @@ window.ilProd = async function(i, pid) {
       // Group by PO+cost to avoid duplicates
       const seen = new Set()
       const batches = []
-      for(const pl of poLines) {
+      for(const pl of poLinesData) {
         const po = pl.purchases
         if(!po) continue
         const key = po.number + '_' + pl.unit_cost
         if(!seen.has(key)) {
           seen.add(key)
+          const qtyPurchased = parseFloat(pl.qty)||0
+          const qtySold = soldByPL[pl.id] || 0
+          const qtyRemaining = Math.max(0, qtyPurchased - qtySold)
           batches.push({
             id: pl.id,
             purchase_number: po.number,
             date: po.date,
             unit_cost: parseFloat(pl.unit_cost)||0,
-            qty_received: parseFloat(pl.qty)||0,
+            qty_received: qtyPurchased,
+            qty_remaining: qtyRemaining,
             purchase_line_id: pl.id,
             purchase_id: pl.purchase_id
           })
         }
       }
       invLines[i].availableBatches = batches
-      // Auto-select MOST RECENT purchase
-      if(batches.length > 0) {
-        const latest = batches[batches.length - 1]
-        invLines[i].cost = latest.unit_cost
-        invLines[i].selectedBatch = latest.id
-        invLines[i].selectedPurchaseNumber = latest.purchase_number
+      // Auto-select MOST RECENT purchase with stock available
+      const withStock = batches.filter(b => b.qty_remaining > 0)
+      const autoSelect = withStock.length > 0 ? withStock[withStock.length-1] : batches[batches.length-1]
+      if(autoSelect) {
+        invLines[i].cost = autoSelect.unit_cost
+        invLines[i].selectedBatch = autoSelect.id
+        invLines[i].selectedPurchaseNumber = autoSelect.purchase_number
       }
     } else {
       invLines[i].cost = parseFloat(p.cost_price) || 0
@@ -2563,4 +2576,3 @@ window.editPurchase = async function(id) {
 
   el('mo-purchase').classList.add('open')
 }
-
