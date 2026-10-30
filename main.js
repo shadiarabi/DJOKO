@@ -386,31 +386,23 @@ window.ilProd = async function(i, pid) {
         const db = b.purchases?.date || ''
         return da < db ? -1 : da > db ? 1 : 0
       })
-      // Group by PO+cost to avoid duplicates
-      const seen = new Set()
-      const batches = []
+      // Group by COST PRICE — merge all POs with same cost into one row
+      const costMap = {}
       for(const pl of poLinesData) {
-        const po = pl.purchases
-        if(!po) continue
-        const key = po.number + '_' + pl.unit_cost
-        if(!seen.has(key)) {
-          seen.add(key)
-          const qtyPurchased = parseFloat(pl.qty)||0
-          const qtySold = soldByPL[pl.id] || 0
-          const qtyRemaining = Math.max(0, qtyPurchased - qtySold)
-          batches.push({
-            id: pl.id,
-            purchase_number: po.number,
-            date: po.date,
-            unit_cost: parseFloat(pl.unit_cost)||0,
-            qty_received: qtyPurchased,
-            qty_remaining: qtyRemaining,
-            purchase_line_id: pl.id,
-            purchase_id: pl.purchase_id
-          })
+        if(!pl.purchases) continue
+        const cost = parseFloat(pl.unit_cost)||0
+        const qtyPurchased = parseFloat(pl.qty)||0
+        const qtySold = soldByPL[pl.id] || 0
+        const qtyRemaining = Math.max(0, qtyPurchased - qtySold)
+        const key = cost.toFixed(2)
+        if(!costMap[key]) {
+          costMap[key] = { id: pl.id, unit_cost: cost, qty_remaining: 0, purchase_line_id: pl.id }
         }
+        costMap[key].qty_remaining += qtyRemaining
       }
-      // Only show batches with stock remaining
+      // Sort by cost price ascending
+      const batches = Object.values(costMap).sort((a,b) => a.unit_cost - b.unit_cost)
+      // Only show costs with stock remaining
       const batchesWithStock = batches.filter(b => b.qty_remaining > 0)
       invLines[i].availableBatches = batchesWithStock.length > 0 ? batchesWithStock : batches.slice(-1)
       // Auto-select MOST RECENT purchase with stock available
@@ -2577,4 +2569,3 @@ window.editPurchase = async function(id) {
 
   el('mo-purchase').classList.add('open')
 }
-
