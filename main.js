@@ -411,9 +411,11 @@ window.ilProd = async function(i, pid) {
           })
         }
       }
-      invLines[i].availableBatches = batches
+      // Only show batches with stock remaining
+      const batchesWithStock = batches.filter(b => b.qty_remaining > 0)
+      invLines[i].availableBatches = batchesWithStock.length > 0 ? batchesWithStock : batches.slice(-1)
       // Auto-select MOST RECENT purchase with stock available
-      const withStock = batches.filter(b => b.qty_remaining > 0)
+      const withStock = batchesWithStock
       const autoSelect = withStock.length > 0 ? withStock[withStock.length-1] : batches[batches.length-1]
       if(autoSelect) {
         invLines[i].cost = autoSelect.unit_cost
@@ -2576,4 +2578,3 @@ window.editPurchase = async function(id) {
 
   el('mo-purchase').classList.add('open')
 }
-
