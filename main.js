@@ -422,12 +422,22 @@ window.ilProd = async function(i, pid) {
       const batches = Object.values(costMap).sort((a,b) => a.unit_cost - b.unit_cost)
       // Only show costs with stock remaining
       const batchesWithStock = batches.filter(b => b.qty_remaining > 0)
-      invLines[i].availableBatches = batchesWithStock.length > 0 ? batchesWithStock : batches.slice(-1)
 
-      // DEBUG — remove after testing
-      console.log('DEBUG ilProd pid='+pid+' poLines='+poLinesData.length+' soldLines='+(soldData||[]).length+' unlinkedSold='+unlinkedSold)
-      console.log('DEBUG batches ALL:', JSON.stringify(batches.map(b=>({cost:b.unit_cost,rem:b.qty_remaining}))))
-      console.log('DEBUG batchesWithStock:', JSON.stringify(batchesWithStock.map(b=>({cost:b.unit_cost,rem:b.qty_remaining}))))
+      // SAFETY CAP: total shown across all batches must not exceed product's actual stock qty
+      // This handles cases where old invoice lines weren't linked to purchase_line_id
+      const actualStock = parseFloat(p.qty) || 0
+      let stockLeft = actualStock
+      const cappedBatches = []
+      // Apply cap starting from MOST EXPENSIVE (highest cost = most recent for FIFO)
+      for(const b of [...batchesWithStock].reverse()) {
+        if(stockLeft <= 0) break
+        const capped = Math.min(b.qty_remaining, stockLeft)
+        cappedBatches.unshift({ ...b, qty_remaining: capped })
+        stockLeft -= capped
+      }
+
+      const finalBatches = cappedBatches.length > 0 ? cappedBatches : (batches.length > 0 ? [{ ...batches[batches.length-1], qty_remaining: actualStock }] : [])
+      invLines[i].availableBatches = finalBatches
       // Auto-select MOST RECENT purchase with stock available
       const withStock = batchesWithStock
       const autoSelect = withStock.length > 0 ? withStock[withStock.length-1] : batches[batches.length-1]
